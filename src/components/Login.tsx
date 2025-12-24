@@ -81,14 +81,36 @@ export function Login() {
       </div>
       <div className="login-box">
         <div className="login-header">
-          <div className="login-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+          <div className="login-logo">
+            <img 
+              src={`${process.env.PUBLIC_URL || ''}/images/logo.png`}
+              alt="CRB Quiz Logo" 
+              className="logo-image"
+              onError={(e) => {
+                // Fallback se a imagem não for encontrada
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = target.parentElement?.querySelector('.logo-fallback') as HTMLElement;
+                if (fallback) {
+                  fallback.style.display = 'flex';
+                }
+              }}
+              onLoad={(e) => {
+                // Esconder fallback se a imagem carregar
+                const target = e.target as HTMLImageElement;
+                const fallback = target.parentElement?.querySelector('.logo-fallback') as HTMLElement;
+                if (fallback) {
+                  fallback.style.display = 'none';
+                }
+              }}
+            />
+            <div className="logo-fallback" style={{ display: 'none' }}>
+              <div className="logo-text-container">
+                <div className="logo-text-crb">CRB</div>
+                <div className="logo-text-quizz">QUIZZ</div>
+              </div>
+            </div>
           </div>
-          <h1>App Quiz</h1>
           <p className="login-subtitle">{isRegister ? 'Crie sua conta e comece a aprender' : 'Bem-vindo de volta!'}</p>
         </div>
         

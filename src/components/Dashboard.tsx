@@ -20,7 +20,7 @@ export function Dashboard() {
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
-        <h1>App Quiz</h1>
+        <h1>CRB Quiz</h1>
         <div className="user-info">
           <span>Olá, {user.username}</span>
           <span className="user-role">({user.role === 'admin' ? 'Administrador' : 'Aluno'})</span>

@@ -29,6 +29,38 @@ export function AlunoDashboard() {
   const handleQuizComplete = (quizResults: QuizResult[]) => {
     setResults(quizResults);
     setIsQuizActive(false);
+    
+    // Salvar estatísticas
+    if (selectedSubject) {
+      const correctCount = quizResults.filter((r) => r.isCorrect).length;
+      const wrongCount = quizResults.length - correctCount;
+      
+      // Obter estatísticas existentes
+      const statsKey = 'quizStatistics';
+      const existingStats = JSON.parse(localStorage.getItem(statsKey) || '[]');
+      
+      // Encontrar ou criar estatística para esta matéria
+      const subjectStatsIndex = existingStats.findIndex(
+        (s: any) => s.subjectId === selectedSubject.id
+      );
+      
+      if (subjectStatsIndex >= 0) {
+        existingStats[subjectStatsIndex].totalAttempts += 1;
+        existingStats[subjectStatsIndex].correctAnswers += correctCount;
+        existingStats[subjectStatsIndex].wrongAnswers += wrongCount;
+        existingStats[subjectStatsIndex].lastAttemptDate = new Date().toISOString();
+      } else {
+        existingStats.push({
+          subjectId: selectedSubject.id,
+          totalAttempts: 1,
+          correctAnswers: correctCount,
+          wrongAnswers: wrongCount,
+          lastAttemptDate: new Date().toISOString(),
+        });
+      }
+      
+      localStorage.setItem(statsKey, JSON.stringify(existingStats));
+    }
   };
 
   const handleBackToSubjects = () => {

@@ -28,3 +28,17 @@ export interface QuizResult {
   isCorrect: boolean;
 }
 
+export interface QuizStatistics {
+  subjectId: string;
+  totalAttempts: number;
+  correctAnswers: number;
+  wrongAnswers: number;
+  lastAttemptDate?: string;
+}
+
+export interface UserSession {
+  userId: string;
+  username: string;
+  loginTime: string;
+}
+

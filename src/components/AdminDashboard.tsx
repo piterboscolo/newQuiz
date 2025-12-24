@@ -1,366 +1,143 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
-import { Subject, Question } from '../types';
+import { QuizStatistics } from '../types';
 import './AdminDashboard.css';
 
 export function AdminDashboard() {
-  const { subjects, questions, addSubject, addQuestion, updateQuestion, deleteQuestion } = useQuiz();
-  const [activeTab, setActiveTab] = useState<'subjects' | 'questions'>('subjects');
-  const [showSubjectForm, setShowSubjectForm] = useState(false);
-  const [showQuestionForm, setShowQuestionForm] = useState(false);
-  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
-
-  const [subjectForm, setSubjectForm] = useState({ name: '', description: '' });
-  const [questionForm, setQuestionForm] = useState({
-    subjectId: '',
-    question: '',
-    option1: '',
-    option2: '',
-    option3: '',
-    option4: '',
-    correctAnswer: 0,
-    funFact: '',
-  });
-
-  const handleAddSubject = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!subjectForm.name.trim()) return;
-
-    const newSubject: Subject = {
-      id: Date.now().toString(),
-      name: subjectForm.name,
-      description: subjectForm.description,
-    };
-
-    addSubject(newSubject);
-    setSubjectForm({ name: '', description: '' });
-    setShowSubjectForm(false);
-  };
-
-  const handleAddQuestion = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!questionForm.question.trim() || !questionForm.subjectId) return;
-
-    const newQuestion: Question = {
-      id: editingQuestion?.id || Date.now().toString(),
-      subjectId: questionForm.subjectId,
-      question: questionForm.question,
-      options: [
-        questionForm.option1,
-        questionForm.option2,
-        questionForm.option3,
-        questionForm.option4,
-      ],
-      correctAnswer: questionForm.correctAnswer,
-      funFact: questionForm.funFact.trim() || undefined,
-    };
-
-    if (editingQuestion) {
-      updateQuestion(newQuestion);
-      setEditingQuestion(null);
-    } else {
-      addQuestion(newQuestion);
-    }
-
-    setQuestionForm({
-      subjectId: '',
-      question: '',
-      option1: '',
-      option2: '',
-      option3: '',
-      option4: '',
-      correctAnswer: 0,
-      funFact: '',
-    });
-    setShowQuestionForm(false);
-  };
-
-  const handleEditQuestion = (question: Question) => {
-    setEditingQuestion(question);
-    setQuestionForm({
-      subjectId: question.subjectId,
-      question: question.question,
-      option1: question.options[0],
-      option2: question.options[1],
-      option3: question.options[2],
-      option4: question.options[3],
-      correctAnswer: question.correctAnswer,
-      funFact: question.funFact || '',
-    });
-    setShowQuestionForm(true);
-  };
-
-  const handleDeleteQuestion = (questionId: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta questão?')) {
-      deleteQuestion(questionId);
-    }
-  };
+  const { subjects } = useQuiz();
+  const [statistics, setStatistics] = useState<QuizStatistics[]>([]);
+  const [loggedUsers, setLoggedUsers] = useState<any[]>([]);
 
   const getSubjectName = (subjectId: string) => {
     return subjects.find((s) => s.id === subjectId)?.name || 'Desconhecida';
   };
 
+  // Carregar estatísticas
+  useEffect(() => {
+    const loadStatistics = () => {
+      const statsKey = 'quizStatistics';
+      const stats = JSON.parse(localStorage.getItem(statsKey) || '[]');
+      setStatistics(stats);
+      
+      const sessionsKey = 'userSessions';
+      const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
+      // Filtrar sessões ativas (últimas 24 horas)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const activeSessions = sessions.filter((s: any) => {
+        const sessionDate = new Date(s.loginTime);
+        return sessionDate > oneDayAgo;
+      });
+      setLoggedUsers(activeSessions);
+    };
+    
+    loadStatistics();
+    // Atualizar a cada 5 segundos
+    const interval = setInterval(loadStatistics, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calcular matéria mais realizada
+  const getMostPopularSubject = () => {
+    if (statistics.length === 0) return null;
+    const sorted = [...statistics].sort((a, b) => b.totalAttempts - a.totalAttempts);
+    return sorted[0];
+  };
+
+  const mostPopular = getMostPopularSubject();
+
   return (
     <div className="admin-dashboard">
-      <div className="admin-tabs">
-        <button
-          className={activeTab === 'subjects' ? 'active' : ''}
-          onClick={() => setActiveTab('subjects')}
-        >
-          Matérias
-        </button>
-        <button
-          className={activeTab === 'questions' ? 'active' : ''}
-          onClick={() => setActiveTab('questions')}
-        >
-          Questões
-        </button>
-      </div>
-
-      {activeTab === 'subjects' && (
-        <div className="admin-section">
-          <div className="section-header">
-            <h2>Gerenciar Matérias</h2>
-            <button
-              onClick={() => setShowSubjectForm(!showSubjectForm)}
-              className="add-button"
-            >
-              {showSubjectForm ? 'Cancelar' : '+ Adicionar Matéria'}
-            </button>
+      <div className="admin-section">
+        <h2>Estatísticas do Sistema</h2>
+        
+        <div className="stats-grid">
+          <div className="stat-card stat-card-primary">
+            <div className="stat-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15C10.9391 15 9.92172 15.4214 9.17157 16.1716C8.42143 16.9217 8 17.9391 8 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="stat-content">
+              <h3>Usuários Logados</h3>
+              <p className="stat-value">{loggedUsers.length}</p>
+              <p className="stat-label">Nas últimas 24 horas</p>
+            </div>
           </div>
 
-          {showSubjectForm && (
-            <form onSubmit={handleAddSubject} className="admin-form">
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Nome da Matéria</label>
-                  <input
-                    type="text"
-                    value={subjectForm.name}
-                    onChange={(e) =>
-                      setSubjectForm({ ...subjectForm, name: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Descrição</label>
-                  <input
-                    type="text"
-                    value={subjectForm.description}
-                    onChange={(e) =>
-                      setSubjectForm({
-                        ...subjectForm,
-                        description: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <button type="submit" className="submit-button">
-                Adicionar
-              </button>
-            </form>
-          )}
-
-          <div className="items-grid">
-            {subjects.map((subject) => (
-              <div key={subject.id} className="item-card">
-                <h3>{subject.name}</h3>
-                <p>{subject.description}</p>
-                <div className="item-meta">
-                  {questions.filter((q) => q.subjectId === subject.id).length}{' '}
-                  questões
-                </div>
-              </div>
-            ))}
+          <div className="stat-card stat-card-success">
+            <div className="stat-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22 11.08V12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C16.84 2 20.87 5.38 21.8 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M22 4L12 14.01L9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="stat-content">
+              <h3>Matéria Mais Realizada</h3>
+              <p className="stat-value">
+                {mostPopular ? getSubjectName(mostPopular.subjectId) : 'N/A'}
+              </p>
+              <p className="stat-label">
+                {mostPopular ? `${mostPopular.totalAttempts} tentativas` : 'Sem dados'}
+              </p>
+            </div>
           </div>
         </div>
-      )}
 
-      {activeTab === 'questions' && (
-        <div className="admin-section">
-          <div className="section-header">
-            <h2>Gerenciar Questões</h2>
-            <button
-              onClick={() => {
-                setShowQuestionForm(!showQuestionForm);
-                setEditingQuestion(null);
-                setQuestionForm({
-                  subjectId: '',
-                  question: '',
-                  option1: '',
-                  option2: '',
-                  option3: '',
-                  option4: '',
-                  correctAnswer: 0,
-                  funFact: '',
-                });
-              }}
-              className="add-button"
-            >
-              {showQuestionForm ? 'Cancelar' : '+ Adicionar Questão'}
-            </button>
-          </div>
+        <div className="stats-section">
+          <h3>Estatísticas por Matéria</h3>
+          <div className="subject-stats-grid">
+            {subjects.map((subject) => {
+              const subjectStats = statistics.find((s) => s.subjectId === subject.id);
+              const totalAnswers = subjectStats 
+                ? subjectStats.correctAnswers + subjectStats.wrongAnswers 
+                : 0;
+              const correctPercentage = totalAnswers > 0 && subjectStats
+                ? Math.round((subjectStats.correctAnswers / totalAnswers) * 100)
+                : 0;
+              const wrongPercentage = totalAnswers > 0 && subjectStats
+                ? Math.round((subjectStats.wrongAnswers / totalAnswers) * 100)
+                : 0;
 
-          {showQuestionForm && (
-            <form onSubmit={handleAddQuestion} className="admin-form">
-              <div className="form-group">
-                <label>Matéria</label>
-                <select
-                  value={questionForm.subjectId}
-                  onChange={(e) =>
-                    setQuestionForm({ ...questionForm, subjectId: e.target.value })
-                  }
-                  required
-                >
-                  <option value="">Selecione uma matéria</option>
-                  {subjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Questão</label>
-                <textarea
-                  value={questionForm.question}
-                  onChange={(e) =>
-                    setQuestionForm({ ...questionForm, question: e.target.value })
-                  }
-                  required
-                  rows={3}
-                />
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Opção 1</label>
-                  <input
-                    type="text"
-                    value={questionForm.option1}
-                    onChange={(e) =>
-                      setQuestionForm({ ...questionForm, option1: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Opção 2</label>
-                  <input
-                    type="text"
-                    value={questionForm.option2}
-                    onChange={(e) =>
-                      setQuestionForm({ ...questionForm, option2: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Opção 3</label>
-                  <input
-                    type="text"
-                    value={questionForm.option3}
-                    onChange={(e) =>
-                      setQuestionForm({ ...questionForm, option3: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Opção 4</label>
-                  <input
-                    type="text"
-                    value={questionForm.option4}
-                    onChange={(e) =>
-                      setQuestionForm({ ...questionForm, option4: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-              </div>
-              <div className="form-group">
-                <label>Resposta Correta</label>
-                <select
-                  value={questionForm.correctAnswer}
-                  onChange={(e) =>
-                    setQuestionForm({
-                      ...questionForm,
-                      correctAnswer: parseInt(e.target.value),
-                    })
-                  }
-                  required
-                >
-                  <option value={0}>Opção 1</option>
-                  <option value={1}>Opção 2</option>
-                  <option value={2}>Opção 3</option>
-                  <option value={3}>Opção 4</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Curiosidade (Fun Fact) - Opcional</label>
-                <textarea
-                  value={questionForm.funFact}
-                  onChange={(e) =>
-                    setQuestionForm({ ...questionForm, funFact: e.target.value })
-                  }
-                  rows={3}
-                  placeholder="Adicione uma curiosidade interessante sobre esta questão..."
-                />
-                <small style={{ color: '#666', fontSize: '0.85rem', display: 'block', marginTop: '5px' }}>
-                  Esta curiosidade será mostrada quando o aluno responder a questão (tanto ao acertar quanto ao errar).
-                </small>
-              </div>
-              <button type="submit" className="submit-button">
-                {editingQuestion ? 'Atualizar' : 'Adicionar'}
-              </button>
-            </form>
-          )}
-
-          <div className="questions-list">
-            {questions.map((question) => (
-              <div key={question.id} className="question-item">
-                <div className="question-header">
-                  <h4>{question.question}</h4>
-                  <span className="question-subject">
-                    {getSubjectName(question.subjectId)}
-                  </span>
-                </div>
-                <div className="question-options">
-                  {question.options.map((option, index) => (
-                    <div
-                      key={index}
-                      className={`question-option ${
-                        index === question.correctAnswer ? 'correct' : ''
-                      }`}
-                    >
-                      {option}
-                      {index === question.correctAnswer && ' ✓'}
+              return (
+                <div key={subject.id} className="subject-stat-card">
+                  <h4>{subject.name}</h4>
+                  <div className="stat-details">
+                    <div className="stat-row">
+                      <span className="stat-label">Tentativas:</span>
+                      <span className="stat-number">{subjectStats?.totalAttempts || 0}</span>
                     </div>
-                  ))}
+                    <div className="stat-row">
+                      <span className="stat-label stat-correct">Acertos:</span>
+                      <span className="stat-number">{subjectStats?.correctAnswers || 0}</span>
+                      {totalAnswers > 0 && (
+                        <span className="stat-percentage">({correctPercentage}%)</span>
+                      )}
+                    </div>
+                    <div className="stat-row">
+                      <span className="stat-label stat-wrong">Erros:</span>
+                      <span className="stat-number">{subjectStats?.wrongAnswers || 0}</span>
+                      {totalAnswers > 0 && (
+                        <span className="stat-percentage">({wrongPercentage}%)</span>
+                      )}
+                    </div>
+                    <div className="stat-progress-bar">
+                      <div 
+                        className="stat-progress-correct" 
+                        style={{ width: `${correctPercentage}%` }}
+                      ></div>
+                      <div 
+                        className="stat-progress-wrong" 
+                        style={{ width: `${wrongPercentage}%` }}
+                      ></div>
+                    </div>
+                  </div>
                 </div>
-                <div className="question-actions">
-                  <button
-                    onClick={() => handleEditQuestion(question)}
-                    className="edit-button"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => handleDeleteQuestion(question.id)}
-                    className="delete-button"
-                  >
-                    Excluir
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
-

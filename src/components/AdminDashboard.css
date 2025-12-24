@@ -3,6 +3,7 @@
   border-radius: 12px;
   padding: 30px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  min-height: 100vh;
 }
 
 .admin-tabs {
@@ -272,6 +273,183 @@
   background: #d32f2f;
 }
 
+/* Estatísticas */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.stat-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 16px;
+  padding: 28px;
+  border: 2px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+  border-color: #2563eb;
+}
+
+.stat-card-primary {
+  border-left: 4px solid #2563eb;
+}
+
+.stat-card-success {
+  border-left: 4px solid #10b981;
+}
+
+.stat-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-card-primary .stat-icon {
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  color: white;
+}
+
+.stat-card-success .stat-icon {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  color: white;
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-content h3 {
+  margin: 0 0 8px 0;
+  color: #64748b;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.stat-value {
+  margin: 0 0 4px 0;
+  color: #1e293b;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.stat-label {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.stats-section {
+  margin-top: 40px;
+}
+
+.stats-section h3 {
+  color: #1e293b;
+  margin: 0 0 24px 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.subject-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.subject-stat-card {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 24px;
+  border: 2px solid #e2e8f0;
+  transition: all 0.3s ease;
+}
+
+.subject-stat-card:hover {
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.subject-stat-card h4 {
+  margin: 0 0 20px 0;
+  color: #1e293b;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.stat-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stat-label {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.stat-label.stat-correct {
+  color: #10b981;
+}
+
+.stat-label.stat-wrong {
+  color: #ef4444;
+}
+
+.stat-number {
+  color: #1e293b;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.stat-percentage {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  margin-left: auto;
+}
+
+.stat-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  margin-top: 8px;
+}
+
+.stat-progress-correct {
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+  height: 100%;
+  transition: width 0.5s ease;
+}
+
+.stat-progress-wrong {
+  background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
+  height: 100%;
+  transition: width 0.5s ease;
+}
+
 @media (max-width: 768px) {
   .form-row {
     grid-template-columns: 1fr;
@@ -284,6 +462,28 @@
   .question-header {
     flex-direction: column;
     gap: 10px;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .stat-card {
+    padding: 20px;
+  }
+
+  .stat-icon {
+    width: 56px;
+    height: 56px;
+  }
+
+  .stat-value {
+    font-size: 1.75rem;
+  }
+
+  .subject-stats-grid {
+    grid-template-columns: 1fr;
   }
 }
 

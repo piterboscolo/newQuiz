@@ -42,6 +42,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (foundUser) {
       setUser(foundUser);
       localStorage.setItem('user', JSON.stringify(foundUser));
+      
+      // Salvar sessão de usuário logado
+      const sessionsKey = 'userSessions';
+      const existingSessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
+      const session = {
+        userId: foundUser.id,
+        username: foundUser.username,
+        loginTime: new Date().toISOString(),
+      };
+      
+      // Remover sessões antigas (mais de 24 horas)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const activeSessions = existingSessions.filter((s: any) => {
+        const sessionDate = new Date(s.loginTime);
+        return sessionDate > oneDayAgo && s.userId !== foundUser.id;
+      });
+      
+      // Adicionar nova sessão se não existir
+      if (!activeSessions.find((s: any) => s.userId === foundUser.id)) {
+        activeSessions.push(session);
+      }
+      
+      localStorage.setItem(sessionsKey, JSON.stringify(activeSessions));
       return true;
     }
     return false;

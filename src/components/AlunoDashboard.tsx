@@ -1,17 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
 import { Subject, Question, QuizResult } from '../types';
 import { Quiz } from './Quiz';
 import { getSubjectConfig } from '../utils/subjectConfig';
 import './AlunoDashboard.css';
 
-export function AlunoDashboard() {
+interface AlunoDashboardProps {
+  onQuizStateChange?: (isActive: boolean) => void;
+}
+
+export function AlunoDashboard({ onQuizStateChange }: AlunoDashboardProps) {
   const { subjects, getQuestionsBySubject } = useQuiz();
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isQuizActive, setIsQuizActive] = useState(false);
   const [results, setResults] = useState<QuizResult[]>([]);
   const [quizKey, setQuizKey] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (onQuizStateChange) {
+      onQuizStateChange(isQuizActive);
+    }
+  }, [isQuizActive, onQuizStateChange]);
 
   const handleSelectSubject = (subject: Subject) => {
     const subjectQuestions = getQuestionsBySubject(subject.id);

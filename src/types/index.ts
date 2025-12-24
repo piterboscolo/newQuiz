@@ -5,6 +5,7 @@ export interface User {
   username: string;
   password: string;
   role: UserRole;
+  avatar?: string; // URL da imagem ou ID do avatar pré-determinado
 }
 
 export interface Subject {

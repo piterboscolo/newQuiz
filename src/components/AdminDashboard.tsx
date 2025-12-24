@@ -1,10 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
+import { useAuth } from '../context/AuthContext';
 import { QuizStatistics } from '../types';
 import './AdminDashboard.css';
 
+const PRESET_AVATARS = [
+  { id: 'avatar1', emoji: '👤', color: '#2563eb' },
+  { id: 'avatar2', emoji: '🎓', color: '#10b981' },
+  { id: 'avatar3', emoji: '🧑', color: '#f59e0b' },
+  { id: 'avatar4', emoji: '👨‍🎓', color: '#8b5cf6' },
+  { id: 'avatar5', emoji: '👩‍🎓', color: '#ec4899' },
+  { id: 'avatar6', emoji: '🧑', color: '#06b6d4' },
+  { id: 'avatar7', emoji: '👨‍🏫', color: '#ef4444' },
+  { id: 'avatar8', emoji: '👩‍🏫', color: '#14b8a6' },
+];
+
 export function AdminDashboard() {
   const { subjects } = useQuiz();
+  const { user: currentUser } = useAuth();
   const [statistics, setStatistics] = useState<QuizStatistics[]>([]);
   const [loggedUsers, setLoggedUsers] = useState<any[]>([]);
 
@@ -23,10 +36,38 @@ export function AdminDashboard() {
       const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
       // Filtrar sessões ativas (últimas 24 horas)
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const activeSessions = sessions.filter((s: any) => {
+      let activeSessions = sessions.filter((s: any) => {
         const sessionDate = new Date(s.loginTime);
         return sessionDate > oneDayAgo;
       });
+      
+      // Se o usuário atual está logado, garantir que ele apareça como online
+      if (currentUser) {
+        const currentUserSession = activeSessions.find((s: any) => s.userId === currentUser.id);
+        if (currentUserSession) {
+          // Atualizar o loginTime do usuário atual para agora (sempre online)
+          currentUserSession.loginTime = new Date().toISOString();
+          // Atualizar no localStorage também
+          const updatedSessions = sessions.map((s: any) => {
+            if (s.userId === currentUser.id) {
+              return { ...s, loginTime: new Date().toISOString() };
+            }
+            return s;
+          });
+          localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+        } else {
+          // Se não existe sessão, criar uma para o usuário atual
+          const newSession = {
+            userId: currentUser.id,
+            username: currentUser.username,
+            loginTime: new Date().toISOString(),
+          };
+          activeSessions.push(newSession);
+          const allSessions = [...sessions, newSession];
+          localStorage.setItem(sessionsKey, JSON.stringify(allSessions));
+        }
+      }
+      
       setLoggedUsers(activeSessions);
     };
     
@@ -34,7 +75,7 @@ export function AdminDashboard() {
     // Atualizar a cada 5 segundos
     const interval = setInterval(loadStatistics, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [currentUser]);
 
   // Calcular matéria mais realizada
   const getMostPopularSubject = () => {
@@ -83,6 +124,89 @@ export function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        {loggedUsers.length > 0 && (
+          <div className="stats-section">
+            <h3>Usuários Ativos</h3>
+            <div className="users-list">
+              {loggedUsers.map((user, index) => {
+                const loginDate = new Date(user.loginTime);
+                const timeAgo = Math.floor((Date.now() - loginDate.getTime()) / 1000 / 60); // minutos
+                const timeAgoText = timeAgo < 60 
+                  ? `${timeAgo} min atrás`
+                  : timeAgo < 1440
+                  ? `${Math.floor(timeAgo / 60)} h atrás`
+                  : `${Math.floor(timeAgo / 1440)} dias atrás`;
+                
+                const getUserAvatar = () => {
+                  const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.userId}`) || '{}');
+                  if (userProfile.uploadedImage) return { type: 'image', value: userProfile.uploadedImage };
+                  if (userProfile.avatar) {
+                    const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
+                    return { type: 'emoji', value: avatar ? avatar.emoji : '👤', color: avatar?.color || '#2563eb' };
+                  }
+                  return { type: 'emoji', value: '👤', color: '#2563eb' };
+                };
+
+                const avatar = getUserAvatar();
+                
+                // Verificar se está online (últimos 5 minutos) ou se é o usuário atual
+                const isOnline = timeAgo < 5 || (currentUser && user.userId === currentUser.id);
+                
+                return (
+                  <div 
+                    key={user.userId || index} 
+                    className="user-card-compact"
+                    title={`${user.username} - ${isOnline ? 'Online' : 'Offline'} (${timeAgoText})`}
+                  >
+                    <div className="user-avatar-compact" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
+                      {avatar.type === 'image' ? (
+                        <img src={avatar.value} alt={user.username} className="user-avatar-image-compact" />
+                      ) : (
+                        <span className="user-avatar-emoji-compact">{avatar.value}</span>
+                      )}
+                    </div>
+                    <div className="user-info-compact">
+                      <span className="user-name-compact">{user.username}</span>
+                      <span className="user-time-compact">{timeAgoText}</span>
+                    </div>
+                    <div className={`user-status-compact ${isOnline ? 'online' : 'offline'}`}>
+                      {isOnline ? (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="12" cy="12" r="10" fill="#10b981" stroke="white" strokeWidth="2"/>
+                        </svg>
+                      ) : (
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="12" cy="12" r="10" fill="#94a3b8" stroke="white" strokeWidth="2"/>
+                        </svg>
+                      )}
+                    </div>
+                    <div className="user-tooltip">
+                      <div className="tooltip-content">
+                        <div className="tooltip-header">
+                          <div className="tooltip-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
+                            {avatar.type === 'image' ? (
+                              <img src={avatar.value} alt={user.username} />
+                            ) : (
+                              <span>{avatar.value}</span>
+                            )}
+                          </div>
+                          <div className="tooltip-info">
+                            <div className="tooltip-name">{user.username}</div>
+                            <div className={`tooltip-status ${isOnline ? 'online' : 'offline'}`}>
+                              {isOnline ? '● Online' : '○ Offline'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="tooltip-time">Último acesso: {timeAgoText}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="stats-section">
           <h3>Estatísticas por Matéria</h3>

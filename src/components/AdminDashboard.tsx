@@ -20,6 +20,7 @@ export function AdminDashboard() {
   const { user: currentUser } = useAuth();
   const [statistics, setStatistics] = useState<QuizStatistics[]>([]);
   const [loggedUsers, setLoggedUsers] = useState<any[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
 
   const getSubjectName = (subjectId: string) => {
     return subjects.find((s) => s.id === subjectId)?.name || 'Desconhecida';
@@ -34,12 +35,23 @@ export function AdminDashboard() {
       
       const sessionsKey = 'userSessions';
       const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-      // Filtrar sessões ativas (últimas 24 horas)
+      
+      // Filtrar sessões ativas (últimas 24 horas) e remover duplicatas
       const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       let activeSessions = sessions.filter((s: any) => {
         const sessionDate = new Date(s.loginTime);
         return sessionDate > oneDayAgo;
       });
+      
+      // Remover sessões duplicadas (manter apenas a mais recente por usuário)
+      const uniqueSessions = new Map();
+      activeSessions.forEach((session: any) => {
+        const existing = uniqueSessions.get(session.userId);
+        if (!existing || new Date(session.loginTime) > new Date(existing.loginTime)) {
+          uniqueSessions.set(session.userId, session);
+        }
+      });
+      activeSessions = Array.from(uniqueSessions.values());
       
       // Se o usuário atual está logado, garantir que ele apareça como online
       if (currentUser) {
@@ -47,13 +59,17 @@ export function AdminDashboard() {
         if (currentUserSession) {
           // Atualizar o loginTime do usuário atual para agora (sempre online)
           currentUserSession.loginTime = new Date().toISOString();
-          // Atualizar no localStorage também
-          const updatedSessions = sessions.map((s: any) => {
-            if (s.userId === currentUser.id) {
-              return { ...s, loginTime: new Date().toISOString() };
-            }
-            return s;
-          });
+          // Atualizar no localStorage também, removendo duplicatas
+          const updatedSessions = Array.from(
+            new Map(
+              sessions.map((s: any) => {
+                if (s.userId === currentUser.id) {
+                  return [s.userId, { ...s, loginTime: new Date().toISOString() }];
+                }
+                return [s.userId, s];
+              })
+            ).values()
+          );
           localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
         } else {
           // Se não existe sessão, criar uma para o usuário atual
@@ -213,47 +229,33 @@ export function AdminDashboard() {
           <div className="subject-stats-grid">
             {subjects.map((subject) => {
               const subjectStats = statistics.find((s) => s.subjectId === subject.id);
-              const totalAnswers = subjectStats 
-                ? subjectStats.correctAnswers + subjectStats.wrongAnswers 
-                : 0;
-              const correctPercentage = totalAnswers > 0 && subjectStats
-                ? Math.round((subjectStats.correctAnswers / totalAnswers) * 100)
-                : 0;
-              const wrongPercentage = totalAnswers > 0 && subjectStats
-                ? Math.round((subjectStats.wrongAnswers / totalAnswers) * 100)
-                : 0;
+              const totalAttempts = subjectStats?.totalAttempts || 0;
 
               return (
-                <div key={subject.id} className="subject-stat-card">
-                  <h4>{subject.name}</h4>
-                  <div className="stat-details">
-                    <div className="stat-row">
-                      <span className="stat-label">Tentativas:</span>
-                      <span className="stat-number">{subjectStats?.totalAttempts || 0}</span>
+                <div 
+                  key={subject.id} 
+                  className="subject-stat-card-compact"
+                  onClick={() => setSelectedSubjectId(subject.id)}
+                >
+                  <div className="subject-card-content">
+                    <div className="subject-card-icon">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
                     </div>
-                    <div className="stat-row">
-                      <span className="stat-label stat-correct">Acertos:</span>
-                      <span className="stat-number">{subjectStats?.correctAnswers || 0}</span>
-                      {totalAnswers > 0 && (
-                        <span className="stat-percentage">({correctPercentage}%)</span>
+                    <div className="subject-card-info">
+                      <h4>{subject.name}</h4>
+                      <p className="subject-card-description">{subject.description}</p>
+                      {totalAttempts > 0 && (
+                        <span className="subject-card-badge">{totalAttempts} tentativa{totalAttempts !== 1 ? 's' : ''}</span>
                       )}
                     </div>
-                    <div className="stat-row">
-                      <span className="stat-label stat-wrong">Erros:</span>
-                      <span className="stat-number">{subjectStats?.wrongAnswers || 0}</span>
-                      {totalAnswers > 0 && (
-                        <span className="stat-percentage">({wrongPercentage}%)</span>
-                      )}
-                    </div>
-                    <div className="stat-progress-bar">
-                      <div 
-                        className="stat-progress-correct" 
-                        style={{ width: `${correctPercentage}%` }}
-                      ></div>
-                      <div 
-                        className="stat-progress-wrong" 
-                        style={{ width: `${wrongPercentage}%` }}
-                      ></div>
+                    <div className="subject-card-arrow">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
                     </div>
                   </div>
                 </div>
@@ -261,6 +263,148 @@ export function AdminDashboard() {
             })}
           </div>
         </div>
+
+        {/* Modal de Estatísticas Detalhadas */}
+        {selectedSubjectId && (() => {
+          const subject = subjects.find((s) => s.id === selectedSubjectId);
+          const subjectStats = statistics.find((s) => s.subjectId === selectedSubjectId);
+          const totalAnswers = subjectStats 
+            ? subjectStats.correctAnswers + subjectStats.wrongAnswers 
+            : 0;
+          const correctPercentage = totalAnswers > 0 && subjectStats
+            ? Math.round((subjectStats.correctAnswers / totalAnswers) * 100)
+            : 0;
+          const wrongPercentage = totalAnswers > 0 && subjectStats
+            ? Math.round((subjectStats.wrongAnswers / totalAnswers) * 100)
+            : 0;
+
+          return (
+            <div className="stat-modal-overlay" onClick={() => setSelectedSubjectId(null)}>
+              <div className="stat-modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="stat-modal-header">
+                  <div className="stat-modal-title-section">
+                    <div className="stat-modal-icon-header">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <h2>{subject?.name || 'Estatísticas'}</h2>
+                      <p className="stat-modal-subtitle">{subject?.description || ''}</p>
+                    </div>
+                  </div>
+                  <button 
+                    className="stat-modal-close"
+                    onClick={() => setSelectedSubjectId(null)}
+                    aria-label="Fechar"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="stat-modal-body">
+                  {subjectStats ? (
+                    <>
+                      <div className="stat-modal-grid">
+                        <div className="stat-modal-card">
+                          <div className="stat-modal-icon stat-modal-primary">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M9 11L12 14L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M21 12V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                          <div className="stat-modal-card-content">
+                            <h3>Total de Tentativas</h3>
+                            <p className="stat-modal-value">{subjectStats.totalAttempts}</p>
+                            <p className="stat-modal-description">Vezes que o quiz foi realizado</p>
+                          </div>
+                        </div>
+
+                        <div className="stat-modal-card">
+                          <div className="stat-modal-icon stat-modal-success">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M22 11.08V12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C16.84 2 20.87 5.38 21.8 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M22 4L12 14.01L9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                          <div className="stat-modal-card-content">
+                            <h3>Acertos</h3>
+                            <p className="stat-modal-value stat-modal-success-text">{subjectStats.correctAnswers}</p>
+                            <p className="stat-modal-description">
+                              {totalAnswers > 0 ? `${correctPercentage}% das respostas` : 'Nenhuma resposta ainda'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="stat-modal-card">
+                          <div className="stat-modal-icon stat-modal-error">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                              <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                          </div>
+                          <div className="stat-modal-card-content">
+                            <h3>Erros</h3>
+                            <p className="stat-modal-value stat-modal-error-text">{subjectStats.wrongAnswers}</p>
+                            <p className="stat-modal-description">
+                              {totalAnswers > 0 ? `${wrongPercentage}% das respostas` : 'Nenhuma resposta ainda'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {totalAnswers > 0 && (
+                        <div className="stat-modal-progress">
+                          <h3>Distribuição de Respostas</h3>
+                          <div className="stat-progress-bar-large">
+                            <div 
+                              className="stat-progress-correct-large" 
+                              style={{ width: `${correctPercentage}%` }}
+                            >
+                              {correctPercentage > 10 && (
+                                <span className="stat-progress-label">{correctPercentage}%</span>
+                              )}
+                            </div>
+                            <div 
+                              className="stat-progress-wrong-large" 
+                              style={{ width: `${wrongPercentage}%` }}
+                            >
+                              {wrongPercentage > 10 && (
+                                <span className="stat-progress-label">{wrongPercentage}%</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="stat-progress-legend">
+                            <div className="stat-legend-item">
+                              <div className="stat-legend-color stat-legend-correct"></div>
+                              <span>Acertos ({subjectStats.correctAnswers})</span>
+                            </div>
+                            <div className="stat-legend-item">
+                              <div className="stat-legend-color stat-legend-wrong"></div>
+                              <span>Erros ({subjectStats.wrongAnswers})</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="stat-modal-empty">
+                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 11L12 14L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M21 12V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <p>Nenhuma estatística disponível para esta matéria ainda.</p>
+                      <p className="stat-modal-empty-hint">As estatísticas aparecerão quando os alunos começarem a fazer os quizzes desta matéria.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

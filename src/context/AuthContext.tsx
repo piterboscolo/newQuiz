@@ -99,8 +99,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    const currentUser = user;
     setUser(null);
     localStorage.removeItem('user');
+    
+    // Remover sessão do usuário ao fazer logout
+    if (currentUser) {
+      const sessionsKey = 'userSessions';
+      const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
+      const updatedSessions = sessions.filter((s: any) => s.userId !== currentUser.id);
+      localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+    }
   };
 
   return (

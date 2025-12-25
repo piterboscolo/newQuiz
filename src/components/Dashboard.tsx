@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { AlunoDashboard } from './AlunoDashboard';
@@ -22,11 +22,79 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
   const [isQuizActive, setIsQuizActive] = useState(false);
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastActivityRef = useRef<number>(Date.now());
 
   const handleLogout = () => {
     logout();
     navigate('/');
   };
+
+  // Logout automático após 10 minutos de inatividade e ao fechar a aplicação
+  useEffect(() => {
+    if (!user) return;
+
+    const INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutos em milissegundos
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+      
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+
+      inactivityTimerRef.current = setTimeout(() => {
+        const timeSinceLastActivity = Date.now() - lastActivityRef.current;
+        if (timeSinceLastActivity >= INACTIVITY_TIMEOUT) {
+          logout();
+          navigate('/');
+        }
+      }, INACTIVITY_TIMEOUT);
+    };
+
+    // Eventos que indicam atividade do usuário
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    
+    activityEvents.forEach(event => {
+      window.addEventListener(event, resetTimer, true);
+    });
+
+    resetTimer();
+
+    // Limpar sessão ao fechar a aba/janela
+    const handleBeforeUnload = () => {
+      if (user) {
+        const sessionsKey = 'userSessions';
+        const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
+        const updatedSessions = sessions.filter((s: any) => s.userId !== user.id);
+        localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+      }
+    };
+
+    // Limpar sessão quando a página fica oculta (aba inativa)
+    const handleVisibilityChange = () => {
+      if (document.hidden && user) {
+        const sessionsKey = 'userSessions';
+        const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
+        const updatedSessions = sessions.filter((s: any) => s.userId !== user.id);
+        localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, resetTimer, true);
+      });
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    };
+  }, [user, logout, navigate]);
 
   if (!user) {
     return null;

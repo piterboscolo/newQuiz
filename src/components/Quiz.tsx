@@ -5,17 +5,16 @@ import './Quiz.css';
 interface QuizProps {
   subject: Subject;
   questions: Question[];
-  onComplete: (results: QuizResult[]) => void;
+  onComplete: (results: QuizResult[], attempts?: { correct: number; wrong: number }) => void;
   onBack: () => void;
   onRestart?: () => void;
   quizKey?: number;
 }
 
 export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKey }: QuizProps) {
-  // Fila de questões pendentes (modelo Duolingo)
-  const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
+  // Sistema simplificado: todas as questões são respondidas uma vez
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [correctQuestions, setCorrectQuestions] = useState<Set<string>>(new Set());
+  const [answeredQuestions, setAnsweredQuestions] = useState<Map<string, boolean>>(new Map()); // questionId -> isCorrect
   const [selectedAnswer, setSelectedAnswer] = useState<number>(-1);
   const [isComplete, setIsComplete] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -23,22 +22,39 @@ export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKe
   const [answerResult, setAnswerResult] = useState<boolean | null>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const questionCardRef = useRef<HTMLDivElement>(null);
+  // Rastrear todas as tentativas de resposta (acertos e erros) usando useRef para garantir que sempre temos o valor atualizado
+  const totalAttemptsRef = useRef({ correct: 0, wrong: 0 });
+  const [totalAttempts, setTotalAttempts] = useState({ correct: 0, wrong: 0 });
+  // Rastrear quais questões já foram respondidas em tentativas anteriores (para não contar novamente)
+  const [previouslyAnsweredQuestions, setPreviouslyAnsweredQuestions] = useState<Set<string>>(new Set());
 
-  // Inicializar a fila com todas as questões
+  // Inicializar o quiz
   useEffect(() => {
-    setQuestionQueue([...questions]);
     setCurrentQuestionIndex(0);
-    setCorrectQuestions(new Set());
+    setAnsweredQuestions(new Map());
     setSelectedAnswer(-1);
     setAnswerResult(null);
     setIsComplete(false);
     setShowAnswer(false);
-  }, [quizKey, questions]);
+    totalAttemptsRef.current = { correct: 0, wrong: 0 };
+    setTotalAttempts({ correct: 0, wrong: 0 });
+    
+    // Carregar questões já respondidas anteriormente do localStorage
+    const statsKey = 'quizStatistics';
+    const existingStats = JSON.parse(localStorage.getItem(statsKey) || '[]');
+    const subjectStats = existingStats.find((s: any) => s.subjectId === subject.id);
+    
+    // Carregar histórico de questões respondidas por matéria
+    const answeredHistoryKey = `answeredQuestions_${subject.id}`;
+    const answeredHistory = JSON.parse(localStorage.getItem(answeredHistoryKey) || '[]');
+    setPreviouslyAnsweredQuestions(new Set(answeredHistory));
+  }, [quizKey, questions, subject.id]);
 
-  const currentQuestion = questionQueue[currentQuestionIndex];
-  const totalOriginalQuestions = questions.length;
-  const correctCount = correctQuestions.size;
-  const progress = totalOriginalQuestions > 0 ? (correctCount / totalOriginalQuestions) * 100 : 0;
+  const currentQuestion = questions[currentQuestionIndex];
+  const totalQuestions = questions.length;
+  const answeredCount = answeredQuestions.size;
+  const correctCount = Array.from(answeredQuestions.values()).filter(v => v === true).length;
+  const progress = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
 
   const handleAnswerSelect = (answerIndex: number) => {
     if (showAnswer || !currentQuestion) return; // Prevenir múltiplos cliques
@@ -81,40 +97,45 @@ export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKe
 
     setIsTransitioning(true);
     
-    setTimeout(() => {
+    // Verificar se é a primeira vez que esta questão está sendo respondida
+    const isFirstAttempt = !previouslyAnsweredQuestions.has(currentQuestion.id);
+    
+    // Só contar para estatísticas se for a primeira tentativa desta questão
+    if (isFirstAttempt) {
       if (answerResult) {
-        // Acertou: marca como correta e remove da fila
-        const updatedCorrectQuestions = new Set(correctQuestions);
-        updatedCorrectQuestions.add(currentQuestion.id);
-        setCorrectQuestions(updatedCorrectQuestions);
-        
-        const newQueue = questionQueue.filter((_, idx) => idx !== currentQuestionIndex);
-        
-        if (newQueue.length === 0) {
-          // Todas as questões foram acertadas!
-          // Aguardar um pouco antes de finalizar para mostrar o feedback
-          setTimeout(() => {
-            handleFinish(updatedCorrectQuestions);
-          }, 300);
-          return;
-        }
-        
-        // Ajusta o índice se necessário
-        const nextIndex = currentQuestionIndex >= newQueue.length ? 0 : currentQuestionIndex;
-        setQuestionQueue(newQueue);
-        setCurrentQuestionIndex(nextIndex);
+        totalAttemptsRef.current.correct += 1;
       } else {
-        // Errou: adiciona a questão de volta ao final da fila
-        const newQueue = [...questionQueue];
-        const wrongQuestion = newQueue.splice(currentQuestionIndex, 1)[0];
-        newQueue.push(wrongQuestion);
-        
-        setQuestionQueue(newQueue);
-        // Mantém o mesmo índice (a questão anterior foi removida, então a próxima está no mesmo lugar)
-        if (currentQuestionIndex >= newQueue.length - 1) {
-          setCurrentQuestionIndex(0);
-        }
+        totalAttemptsRef.current.wrong += 1;
       }
+      // Atualizar também o estado para exibição
+      setTotalAttempts({ ...totalAttemptsRef.current });
+    }
+    
+    // Marcar a questão como respondida nesta tentativa (acertada ou errada)
+    const updatedAnsweredQuestions = new Map(answeredQuestions);
+    updatedAnsweredQuestions.set(currentQuestion.id, answerResult);
+    setAnsweredQuestions(updatedAnsweredQuestions);
+    
+    // Se for a primeira tentativa, adicionar ao conjunto de questões já respondidas
+    if (isFirstAttempt) {
+      const updatedPreviouslyAnswered = new Set(previouslyAnsweredQuestions);
+      updatedPreviouslyAnswered.add(currentQuestion.id);
+      setPreviouslyAnsweredQuestions(updatedPreviouslyAnswered);
+    }
+    
+    setTimeout(() => {
+      // Verificar se todas as questões foram respondidas
+      if (currentQuestionIndex + 1 >= totalQuestions) {
+        // Todas as questões foram respondidas!
+        // Aguardar um pouco antes de finalizar para mostrar o feedback
+        setTimeout(() => {
+          handleFinish(updatedAnsweredQuestions, { ...totalAttemptsRef.current });
+        }, 300);
+        return;
+      }
+      
+      // Avançar para a próxima questão
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
       
       setSelectedAnswer(-1);
       setAnswerResult(null);
@@ -132,17 +153,37 @@ export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKe
     }
   };
 
-  const handleFinish = (finalCorrectQuestions?: Set<string>) => {
-    // Criar resultados baseados nas questões corretas
-    // Usar o set passado como parâmetro ou o estado atual
-    const correctSet = finalCorrectQuestions || correctQuestions;
-    const results: QuizResult[] = questions.map((question) => ({
-      questionId: question.id,
-      selectedAnswer: -1, // Não rastreamos respostas individuais no modelo Duolingo
-      isCorrect: correctSet.has(question.id), // Se a fila está vazia, todas foram acertadas
-    }));
+  const handleFinish = (finalAnsweredQuestions?: Map<string, boolean>, finalAttempts?: { correct: number; wrong: number }) => {
+    // Criar resultados baseados nas questões respondidas
+    // Usar o map passado como parâmetro ou o estado atual
+    const answeredMap = finalAnsweredQuestions || answeredQuestions;
+    
+    // Salvar histórico de questões respondidas no localStorage
+    const answeredHistoryKey = `answeredQuestions_${subject.id}`;
+    const currentHistory = JSON.parse(localStorage.getItem(answeredHistoryKey) || '[]');
+    const updatedHistory = Array.from(new Set([...currentHistory, ...Array.from(previouslyAnsweredQuestions)]));
+    localStorage.setItem(answeredHistoryKey, JSON.stringify(updatedHistory));
+    
+    // Criar resultados: usar o resultado da primeira tentativa de cada questão
+    // Se a questão já foi respondida antes, usar o resultado da primeira vez
+    // Se não, usar o resultado desta tentativa
+    const results: QuizResult[] = questions.map((question) => {
+      // Se já foi respondida antes, verificar no histórico
+      // Por enquanto, vamos usar o resultado desta tentativa, mas as estatísticas já foram contabilizadas apenas na primeira vez
+      const isCorrect = answeredMap.get(question.id) || false;
+      return {
+        questionId: question.id,
+        selectedAnswer: -1,
+        isCorrect: isCorrect,
+      };
+    });
+    
     setIsComplete(true);
-    onComplete(results);
+    // Passar também as estatísticas de tentativas (acertos e erros totais)
+    // Priorizar o valor passado como parâmetro, senão usar o ref (que sempre tem o valor atualizado)
+    const attemptsToPass = finalAttempts || { ...totalAttemptsRef.current };
+    console.log('Quiz finalizado - Tentativas (apenas primeira vez):', attemptsToPass);
+    onComplete(results, attemptsToPass);
   };
 
   if (isComplete) {
@@ -181,13 +222,13 @@ export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKe
             ></div>
           </div>
           <span className="progress-text">
-            {correctCount} de {totalOriginalQuestions} corretas
+            {answeredCount} de {totalQuestions} respondidas ({correctCount} corretas)
           </span>
         </div>
-        {questionQueue.length > 0 && (
+        {currentQuestionIndex < totalQuestions && (
           <div className="queue-info">
             <span className="queue-text">
-              {questionQueue.length} questão{questionQueue.length !== 1 ? 'ões' : ''} restante{questionQueue.length !== 1 ? 's' : ''}
+              Questão {currentQuestionIndex + 1} de {totalQuestions}
             </span>
           </div>
         )}

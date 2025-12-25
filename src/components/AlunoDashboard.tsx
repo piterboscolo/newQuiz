@@ -36,14 +36,24 @@ export function AlunoDashboard({ onQuizStateChange }: AlunoDashboardProps) {
     setQuizKey(Date.now()); // Nova key única quando iniciar novo quiz
   };
 
-  const handleQuizComplete = (quizResults: QuizResult[]) => {
+  const handleQuizComplete = (quizResults: QuizResult[], attempts?: { correct: number; wrong: number }) => {
     setResults(quizResults);
     setIsQuizActive(false);
     
     // Salvar estatísticas
     if (selectedSubject) {
-      const correctCount = quizResults.filter((r) => r.isCorrect).length;
-      const wrongCount = quizResults.length - correctCount;
+      // Usar as tentativas reais do quiz (acertos e erros durante todo o processo)
+      // Se não foram fornecidas, usar o resultado final como fallback
+      const correctCount = attempts?.correct ?? quizResults.filter((r) => r.isCorrect).length;
+      const wrongCount = attempts?.wrong ?? (quizResults.length - correctCount);
+      
+      // Debug: log para verificar os valores
+      console.log('Estatísticas do Quiz:', {
+        subject: selectedSubject.name,
+        correct: correctCount,
+        wrong: wrongCount,
+        attempts: attempts
+      });
       
       // Obter estatísticas existentes
       const statsKey = 'quizStatistics';
@@ -69,6 +79,7 @@ export function AlunoDashboard({ onQuizStateChange }: AlunoDashboardProps) {
         });
       }
       
+      console.log('Estatísticas salvas:', existingStats[subjectStatsIndex >= 0 ? subjectStatsIndex : existingStats.length - 1]);
       localStorage.setItem(statsKey, JSON.stringify(existingStats));
     }
   };

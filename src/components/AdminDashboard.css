@@ -896,3 +896,177 @@
     right: 16px;
   }
 }
+
+/* Ranking de Usuários */
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  max-width: 800px;
+}
+
+.ranking-item {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 12px;
+  padding: 14px;
+  border: 2px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  max-width: 100%;
+}
+
+.ranking-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border-color: #2563eb;
+}
+
+.ranking-item.ranking-top {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+}
+
+.ranking-item.ranking-top:nth-child(1) {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.ranking-item.ranking-top:nth-child(2) {
+  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-color: #94a3b8;
+  box-shadow: 0 4px 12px rgba(148, 163, 184, 0.3);
+}
+
+.ranking-item.ranking-top:nth-child(3) {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #d97706;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);
+}
+
+.ranking-position {
+  min-width: 40px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.ranking-medal {
+  display: inline-block;
+  font-size: 1.5rem;
+}
+
+.ranking-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  border: 2px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.ranking-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ranking-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ranking-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.ranking-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.ranking-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ranking-stat svg {
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.ranking-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.section-description {
+  color: #64748b;
+  font-size: 0.95rem;
+  margin: -8px 0 16px 0;
+}
+
+@media (max-width: 768px) {
+  .ranking-item {
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .ranking-position {
+    min-width: 40px;
+    font-size: 1.2rem;
+  }
+  
+  .ranking-medal {
+    font-size: 1.5rem;
+  }
+  
+  .ranking-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 1.2rem;
+  }
+  
+  .ranking-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ranking-item {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .ranking-position {
+    order: 1;
+  }
+  
+  .ranking-avatar {
+    order: 2;
+  }
+  
+  .ranking-info {
+    order: 3;
+    width: 100%;
+  }
+}

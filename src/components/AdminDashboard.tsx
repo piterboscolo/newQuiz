@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
 import { useAuth } from '../context/AuthContext';
-import { QuizStatistics } from '../types';
+import { QuizStatistics, UserRanking, UserQuizStats, User } from '../types';
 import './AdminDashboard.css';
 
 const PRESET_AVATARS = [
@@ -21,6 +21,7 @@ export function AdminDashboard() {
   const [statistics, setStatistics] = useState<QuizStatistics[]>([]);
   const [loggedUsers, setLoggedUsers] = useState<any[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
 
   const getSubjectName = (subjectId: string) => {
     return subjects.find((s) => s.id === subjectId)?.name || 'Desconhecida';
@@ -85,6 +86,49 @@ export function AdminDashboard() {
       }
       
       setLoggedUsers(activeSessions);
+      
+      // Carregar e calcular ranking de usuários
+      const userStatsKey = 'userQuizStats';
+      const userStats: UserQuizStats[] = JSON.parse(localStorage.getItem(userStatsKey) || '[]');
+      
+      // Carregar dados de usuários para obter avatares
+      const usersKey = 'users';
+      const users: User[] = JSON.parse(localStorage.getItem(usersKey) || '[]');
+      
+      // Calcular ranking
+      const rankings: UserRanking[] = userStats
+        .map((stat) => {
+          const user = users.find((u) => u.id === stat.userId);
+          const accuracy = stat.totalQuestions > 0 
+            ? Math.round((stat.totalFirstAttemptCorrect / stat.totalQuestions) * 100)
+            : 0;
+          
+          return {
+            position: 0, // Será calculado após ordenação
+            userId: stat.userId,
+            username: stat.username,
+            totalQuizzes: stat.totalQuizzes,
+            totalFirstAttemptCorrect: stat.totalFirstAttemptCorrect,
+            accuracy: accuracy,
+            avatar: user?.avatar,
+          };
+        })
+        .sort((a, b) => {
+          // Ordenar por: 1) Total de quizzes, 2) Acertos de primeira, 3) Precisão
+          if (b.totalQuizzes !== a.totalQuizzes) {
+            return b.totalQuizzes - a.totalQuizzes;
+          }
+          if (b.totalFirstAttemptCorrect !== a.totalFirstAttemptCorrect) {
+            return b.totalFirstAttemptCorrect - a.totalFirstAttemptCorrect;
+          }
+          return b.accuracy - a.accuracy;
+        })
+        .map((ranking, index) => ({
+          ...ranking,
+          position: index + 1,
+        }));
+      
+      setUserRankings(rankings);
     };
     
     loadStatistics();
@@ -223,6 +267,89 @@ export function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Ranking de Usuários */}
+        <div className="stats-section">
+          <h3>🏆 Ranking de Usuários</h3>
+          <p className="section-description">Usuários que mais realizaram quizzes e acertaram de primeira</p>
+          {userRankings.length === 0 ? (
+            <div className="ranking-empty">
+              <p>Nenhum usuário completou quizzes ainda.</p>
+            </div>
+          ) : (
+            <div className="ranking-list">
+              {userRankings.map((ranking) => {
+                const getAvatar = () => {
+                  // Buscar avatar do perfil do usuário (mesmo método usado para usuários logados)
+                  const userProfile = JSON.parse(localStorage.getItem(`userProfile_${ranking.userId}`) || '{}');
+                  if (userProfile.uploadedImage) {
+                    return { type: 'image' as const, value: userProfile.uploadedImage };
+                  }
+                  if (userProfile.avatar) {
+                    const avatarData = PRESET_AVATARS.find((a) => a.id === userProfile.avatar);
+                    if (avatarData) {
+                      return { type: 'emoji' as const, value: avatarData.emoji, color: avatarData.color };
+                    }
+                  }
+                  // Avatar padrão
+                  const defaultAvatar = PRESET_AVATARS[0];
+                  return { type: 'emoji' as const, value: defaultAvatar.emoji, color: defaultAvatar.color };
+                };
+                
+                const avatar = getAvatar();
+                const getMedal = (position: number) => {
+                  if (position === 1) return '🥇';
+                  if (position === 2) return '🥈';
+                  if (position === 3) return '🥉';
+                  return `#${position}`;
+                };
+                
+                return (
+                  <div 
+                    key={ranking.userId} 
+                    className={`ranking-item ${ranking.position <= 3 ? 'ranking-top' : ''}`}
+                  >
+                    <div className="ranking-position">
+                      <span className="ranking-medal">{getMedal(ranking.position)}</span>
+                    </div>
+                    <div className="ranking-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
+                      {avatar.type === 'image' ? (
+                        <img src={avatar.value} alt={ranking.username} />
+                      ) : (
+                        <span>{avatar.value}</span>
+                      )}
+                    </div>
+                    <div className="ranking-info">
+                      <div className="ranking-name">{ranking.username}</div>
+                      <div className="ranking-stats">
+                        <span className="ranking-stat">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M9 11L12 14L22 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M21 12V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          {ranking.totalQuizzes} quiz{ranking.totalQuizzes !== 1 ? 'zes' : ''}
+                        </span>
+                        <span className="ranking-stat">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M22 11.08V12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2C16.84 2 20.87 5.38 21.8 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M22 4L12 14.01L9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          {ranking.totalFirstAttemptCorrect} acertos de primeira
+                        </span>
+                        <span className="ranking-stat">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          {ranking.accuracy}% precisão
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <div className="stats-section">
           <h3>Estatísticas por Matéria</h3>

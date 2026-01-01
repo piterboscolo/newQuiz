@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Subject, Question } from '../types';
 import { subjects as defaultSubjects, questions as defaultQuestions } from '../data/mockData';
 
@@ -10,6 +10,7 @@ interface QuizContextType {
   updateQuestion: (question: Question) => void;
   deleteQuestion: (questionId: string) => void;
   getQuestionsBySubject: (subjectId: string) => Question[];
+  resetToDefaults: () => void;
 }
 
 const QuizContext = createContext<QuizContextType | undefined>(undefined);
@@ -17,12 +18,31 @@ const QuizContext = createContext<QuizContextType | undefined>(undefined);
 export function QuizProvider({ children }: { children: ReactNode }) {
   const [subjects, setSubjects] = useState<Subject[]>(() => {
     const stored = localStorage.getItem('subjects');
-    return stored ? JSON.parse(stored) : defaultSubjects;
+    // Se não houver dados salvos ou se os dados padrão tiverem mais matérias, usar os padrões
+    if (!stored || defaultSubjects.length > JSON.parse(stored).length) {
+      localStorage.setItem('subjects', JSON.stringify(defaultSubjects));
+      return defaultSubjects;
+    }
+    return JSON.parse(stored);
   });
 
   const [questions, setQuestions] = useState<Question[]>(() => {
     const stored = localStorage.getItem('questions');
-    return stored ? JSON.parse(stored) : defaultQuestions;
+    // Se não houver dados salvos, usar os padrões
+    if (!stored) {
+      localStorage.setItem('questions', JSON.stringify(defaultQuestions));
+      return defaultQuestions;
+    }
+    
+    const storedQuestions = JSON.parse(stored);
+    // Sempre usar os dados padrão se tiverem mais questões ou se for a primeira vez
+    // Isso garante que novas questões sejam sempre carregadas
+    if (defaultQuestions.length >= storedQuestions.length) {
+      localStorage.setItem('questions', JSON.stringify(defaultQuestions));
+      return defaultQuestions;
+    }
+    
+    return storedQuestions;
   });
 
   const addSubject = (subject: Subject) => {
@@ -51,8 +71,31 @@ export function QuizProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('questions', JSON.stringify(newQuestions));
   };
 
+  // Sincronizar com dados padrão quando houver mais questões no mockData
+  useEffect(() => {
+    const storedQuestions = localStorage.getItem('questions');
+    if (!storedQuestions) {
+      setQuestions(defaultQuestions);
+      localStorage.setItem('questions', JSON.stringify(defaultQuestions));
+    } else {
+      const parsed = JSON.parse(storedQuestions);
+      // Se os dados padrão tiverem mais ou igual número de questões, atualizar
+      if (defaultQuestions.length >= parsed.length) {
+        setQuestions(defaultQuestions);
+        localStorage.setItem('questions', JSON.stringify(defaultQuestions));
+      }
+    }
+  }, []);
+
   const getQuestionsBySubject = (subjectId: string) => {
     return questions.filter((q) => q.subjectId === subjectId);
+  };
+
+  const resetToDefaults = () => {
+    setSubjects(defaultSubjects);
+    setQuestions(defaultQuestions);
+    localStorage.setItem('subjects', JSON.stringify(defaultSubjects));
+    localStorage.setItem('questions', JSON.stringify(defaultQuestions));
   };
 
   return (
@@ -65,6 +108,7 @@ export function QuizProvider({ children }: { children: ReactNode }) {
         updateQuestion,
         deleteQuestion,
         getQuestionsBySubject,
+        resetToDefaults,
       }}
     >
       {children}
@@ -79,6 +123,7 @@ export function useQuiz() {
   }
   return context;
 }
+
 
 
 

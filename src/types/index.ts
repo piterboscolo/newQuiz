@@ -43,3 +43,21 @@ export interface UserSession {
   loginTime: string;
 }
 
+export interface UserQuizStats {
+  userId: string;
+  username: string;
+  totalQuizzes: number; // Total de quizzes realizados
+  totalFirstAttemptCorrect: number; // Total de acertos de primeira tentativa
+  totalQuestions: number; // Total de questões respondidas
+  lastQuizDate?: string;
+}
+
+export interface UserRanking {
+  position: number;
+  userId: string;
+  username: string;
+  totalQuizzes: number;
+  totalFirstAttemptCorrect: number;
+  accuracy: number; // Porcentagem de acertos de primeira
+  avatar?: string;
+}

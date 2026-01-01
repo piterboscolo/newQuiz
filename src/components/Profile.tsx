@@ -117,6 +117,17 @@ export function Profile({ onBack }: ProfileProps) {
       return s;
     });
     localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+    
+    // Atualizar também no array de usuários para manter sincronizado
+    const usersKey = 'users';
+    const users = JSON.parse(localStorage.getItem(usersKey) || '[]');
+    const updatedUsers = users.map((u: any) => {
+      if (u.id === user.id) {
+        return { ...u, avatar: avatar || image || undefined };
+      }
+      return u;
+    });
+    localStorage.setItem(usersKey, JSON.stringify(updatedUsers));
   };
 
   const getCurrentAvatar = () => {

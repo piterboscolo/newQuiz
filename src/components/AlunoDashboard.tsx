@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
-import { Subject, Question, QuizResult } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { Subject, Question, QuizResult, UserQuizStats } from '../types';
 import { Quiz } from './Quiz';
 import { getSubjectConfig } from '../utils/subjectConfig';
 import './AlunoDashboard.css';
@@ -11,6 +12,7 @@ interface AlunoDashboardProps {
 
 export function AlunoDashboard({ onQuizStateChange }: AlunoDashboardProps) {
   const { subjects, getQuestionsBySubject } = useQuiz();
+  const { user } = useAuth();
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isQuizActive, setIsQuizActive] = useState(false);
@@ -81,6 +83,37 @@ export function AlunoDashboard({ onQuizStateChange }: AlunoDashboardProps) {
       
       console.log('Estatísticas salvas:', existingStats[subjectStatsIndex >= 0 ? subjectStatsIndex : existingStats.length - 1]);
       localStorage.setItem(statsKey, JSON.stringify(existingStats));
+      
+      // Salvar estatísticas por usuário para o ranking
+      if (user) {
+        const userStatsKey = 'userQuizStats';
+        const existingUserStats = JSON.parse(localStorage.getItem(userStatsKey) || '[]');
+        const userStatsIndex = existingUserStats.findIndex(
+          (s: UserQuizStats) => s.userId === user.id
+        );
+        
+        // O correctCount já representa acertos de primeira tentativa (conforme lógica do Quiz.tsx)
+        const firstAttemptCorrect = correctCount;
+        const totalQuestions = quizResults.length;
+        
+        if (userStatsIndex >= 0) {
+          existingUserStats[userStatsIndex].totalQuizzes += 1;
+          existingUserStats[userStatsIndex].totalFirstAttemptCorrect += firstAttemptCorrect;
+          existingUserStats[userStatsIndex].totalQuestions += totalQuestions;
+          existingUserStats[userStatsIndex].lastQuizDate = new Date().toISOString();
+        } else {
+          existingUserStats.push({
+            userId: user.id,
+            username: user.username,
+            totalQuizzes: 1,
+            totalFirstAttemptCorrect: firstAttemptCorrect,
+            totalQuestions: totalQuestions,
+            lastQuizDate: new Date().toISOString(),
+          });
+        }
+        
+        localStorage.setItem(userStatsKey, JSON.stringify(existingUserStats));
+      }
     }
   };
 

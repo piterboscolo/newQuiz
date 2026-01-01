@@ -22,6 +22,8 @@ export function AdminDashboard() {
   const [loggedUsers, setLoggedUsers] = useState<any[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
+  const [activeUsers, setActiveUsers] = useState<any[]>([]);
+  const [inactiveUsers, setInactiveUsers] = useState<any[]>([]);
 
   const getSubjectName = (subjectId: string) => {
     return subjects.find((s) => s.id === subjectId)?.name || 'Desconhecida';
@@ -129,6 +131,56 @@ export function AdminDashboard() {
         }));
       
       setUserRankings(rankings);
+      
+      // Carregar todos os usuários e suas últimas sessões
+      const allUsers = JSON.parse(localStorage.getItem('users') || '[]');
+      const allSessions = JSON.parse(localStorage.getItem('userSessions') || '[]');
+      
+      // Criar um mapa com a última sessão de cada usuário
+      const lastLoginMap = new Map<string, string>();
+      allSessions.forEach((session: any) => {
+        const existing = lastLoginMap.get(session.userId);
+        if (!existing || new Date(session.loginTime) > new Date(existing)) {
+          lastLoginMap.set(session.userId, session.loginTime);
+        }
+      });
+      
+      // Separar usuários em ativos e inativos (últimos 7 dias)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const active: any[] = [];
+      const inactive: any[] = [];
+      
+      allUsers.forEach((user: User) => {
+        const lastLogin = lastLoginMap.get(user.id);
+        const userWithLastLogin = {
+          ...user,
+          lastLogin: lastLogin || null,
+        };
+        
+        if (lastLogin && new Date(lastLogin) > sevenDaysAgo) {
+          active.push(userWithLastLogin);
+        } else {
+          inactive.push(userWithLastLogin);
+        }
+      });
+      
+      // Ordenar ativos por último login (mais recente primeiro)
+      active.sort((a, b) => {
+        if (!a.lastLogin) return 1;
+        if (!b.lastLogin) return -1;
+        return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
+      });
+      
+      // Ordenar inativos por último login (mais recente primeiro)
+      inactive.sort((a, b) => {
+        if (!a.lastLogin && !b.lastLogin) return 0;
+        if (!a.lastLogin) return 1;
+        if (!b.lastLogin) return -1;
+        return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
+      });
+      
+      setActiveUsers(active);
+      setInactiveUsers(inactive);
     };
     
     loadStatistics();
@@ -267,6 +319,121 @@ export function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Usuários Criados - Ativos e Inativos */}
+        <div className="stats-section">
+          <h3>👥 Usuários do Sistema</h3>
+          <p className="section-description">Usuários criados, ativos e inativos com data do último login</p>
+          
+          <div className="users-status-grid">
+            <div className="users-status-card users-active">
+              <div className="users-status-header">
+                <h4>✅ Usuários Ativos</h4>
+                <span className="users-count">{activeUsers.length}</span>
+              </div>
+              <p className="users-status-description">Login nos últimos 7 dias</p>
+              <div className="users-status-list">
+                {activeUsers.length === 0 ? (
+                  <p className="users-empty">Nenhum usuário ativo</p>
+                ) : (
+                  activeUsers.map((user) => {
+                    const getUserAvatar = () => {
+                      const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
+                      if (userProfile.uploadedImage) return { type: 'image', value: userProfile.uploadedImage };
+                      if (userProfile.avatar) {
+                        const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
+                        return { type: 'emoji', value: avatar ? avatar.emoji : '👤', color: avatar?.color || '#2563eb' };
+                      }
+                      return { type: 'emoji', value: '👤', color: '#2563eb' };
+                    };
+                    
+                    const avatar = getUserAvatar();
+                    const formatLastLogin = (loginTime: string | null) => {
+                      if (!loginTime) return 'Nunca';
+                      const date = new Date(loginTime);
+                      const now = new Date();
+                      const diffMs = now.getTime() - date.getTime();
+                      const diffMins = Math.floor(diffMs / 60000);
+                      const diffHours = Math.floor(diffMs / 3600000);
+                      const diffDays = Math.floor(diffMs / 86400000);
+                      
+                      if (diffMins < 60) return `${diffMins} min atrás`;
+                      if (diffHours < 24) return `${diffHours}h atrás`;
+                      if (diffDays < 7) return `${diffDays} dias atrás`;
+                      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    };
+                    
+                    return (
+                      <div key={user.id} className="user-status-item">
+                        <div className="user-status-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
+                          {avatar.type === 'image' ? (
+                            <img src={avatar.value} alt={user.username} />
+                          ) : (
+                            <span>{avatar.value}</span>
+                          )}
+                        </div>
+                        <div className="user-status-info">
+                          <div className="user-status-name">{user.username}</div>
+                          <div className="user-status-role">{user.role === 'admin' ? '👨‍💼 Admin' : '🎓 Aluno'}</div>
+                          <div className="user-status-date">Último login: {formatLastLogin(user.lastLogin)}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            
+            <div className="users-status-card users-inactive">
+              <div className="users-status-header">
+                <h4>⏸️ Usuários Inativos</h4>
+                <span className="users-count">{inactiveUsers.length}</span>
+              </div>
+              <p className="users-status-description">Sem login nos últimos 7 dias</p>
+              <div className="users-status-list">
+                {inactiveUsers.length === 0 ? (
+                  <p className="users-empty">Nenhum usuário inativo</p>
+                ) : (
+                  inactiveUsers.map((user) => {
+                    const getUserAvatar = () => {
+                      const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
+                      if (userProfile.uploadedImage) return { type: 'image', value: userProfile.uploadedImage };
+                      if (userProfile.avatar) {
+                        const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
+                        return { type: 'emoji', value: avatar ? avatar.emoji : '👤', color: avatar?.color || '#2563eb' };
+                      }
+                      return { type: 'emoji', value: '👤', color: '#2563eb' };
+                    };
+                    
+                    const avatar = getUserAvatar();
+                    const formatLastLogin = (loginTime: string | null) => {
+                      if (!loginTime) return 'Nunca';
+                      const date = new Date(loginTime);
+                      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    };
+                    
+                    return (
+                      <div key={user.id} className="user-status-item">
+                        <div className="user-status-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
+                          {avatar.type === 'image' ? (
+                            <img src={avatar.value} alt={user.username} />
+                          ) : (
+                            <span>{avatar.value}</span>
+                          )}
+                        </div>
+                        <div className="user-status-info">
+                          <div className="user-status-name">{user.username}</div>
+                          <div className="user-status-role">{user.role === 'admin' ? '👨‍💼 Admin' : '🎓 Aluno'}</div>
+                          <div className="user-status-date">Último login: {formatLastLogin(user.lastLogin)}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Ranking de Usuários */}
         <div className="stats-section">

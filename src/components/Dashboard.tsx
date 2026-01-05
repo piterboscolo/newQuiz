@@ -25,8 +25,8 @@ export function Dashboard() {
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
@@ -43,10 +43,10 @@ export function Dashboard() {
         clearTimeout(inactivityTimerRef.current);
       }
 
-      inactivityTimerRef.current = setTimeout(() => {
+      inactivityTimerRef.current = setTimeout(async () => {
         const timeSinceLastActivity = Date.now() - lastActivityRef.current;
         if (timeSinceLastActivity >= INACTIVITY_TIMEOUT) {
-          logout();
+          await logout();
           navigate('/');
         }
       }, INACTIVITY_TIMEOUT);
@@ -62,22 +62,16 @@ export function Dashboard() {
     resetTimer();
 
     // Limpar sessão ao fechar a aba/janela
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = async () => {
       if (user) {
-        const sessionsKey = 'userSessions';
-        const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-        const updatedSessions = sessions.filter((s: any) => s.userId !== user.id);
-        localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+        await logout();
       }
     };
 
     // Limpar sessão quando a página fica oculta (aba inativa)
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.hidden && user) {
-        const sessionsKey = 'userSessions';
-        const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-        const updatedSessions = sessions.filter((s: any) => s.userId !== user.id);
-        localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+        await logout();
       }
     };
 

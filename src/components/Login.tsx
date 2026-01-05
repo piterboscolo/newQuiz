@@ -15,7 +15,7 @@ export function Login() {
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -25,14 +25,15 @@ export function Login() {
       return;
     }
 
-    if (login(username, password)) {
+    const success = await login(username, password);
+    if (success) {
       navigate('/dashboard');
     } else {
       setError('Usuário ou senha incorretos');
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -47,7 +48,7 @@ export function Login() {
       return;
     }
 
-    const result = register(username, password);
+    const result = await register(username, password);
     
     if (result.success) {
       setSuccess(result.message);

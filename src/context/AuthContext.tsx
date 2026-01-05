@@ -1,21 +1,16 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, UserRole } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => boolean;
-  register: (username: string, password: string, role?: UserRole) => { success: boolean; message: string };
-  logout: () => void;
+  login: (username: string, password: string) => Promise<boolean>;
+  register: (username: string, password: string, role?: UserRole) => Promise<{ success: boolean; message: string }>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Usuários padrão (em produção, isso viria de um backend)
-const defaultUsers: User[] = [
-  { id: '1', username: 'admin', password: 'admin123', role: 'admin' },
-  { id: '2', username: 'aluno', password: 'aluno123', role: 'aluno' },
-];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
@@ -23,92 +18,298 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return stored ? JSON.parse(stored) : null;
   });
 
-  const getUsers = (): User[] => {
-    const stored = localStorage.getItem('users');
-    if (stored) {
-      return JSON.parse(stored);
-    }
-    // Salvar usuários padrão na primeira vez
-    localStorage.setItem('users', JSON.stringify(defaultUsers));
-    return defaultUsers;
-  };
+  // Carregar usuário do banco se existir no localStorage
+  useEffect(() => {
+    const loadUser = async () => {
+      const stored = localStorage.getItem('user');
+      if (!stored) return;
 
-  const login = (username: string, password: string): boolean => {
-    const users = getUsers();
-    const foundUser = users.find(
-      (u) => u.username === username && u.password === password
-    );
-    
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('user', JSON.stringify(foundUser));
-      
-      // Salvar sessão de usuário logado
-      const sessionsKey = 'userSessions';
-      const existingSessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-      const session = {
-        userId: foundUser.id,
-        username: foundUser.username,
-        loginTime: new Date().toISOString(),
-      };
-      
-      // Remover sessões antigas (mais de 24 horas)
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const activeSessions = existingSessions.filter((s: any) => {
-        const sessionDate = new Date(s.loginTime);
-        return sessionDate > oneDayAgo && s.userId !== foundUser.id;
-      });
-      
-      // Adicionar nova sessão se não existir
-      if (!activeSessions.find((s: any) => s.userId === foundUser.id)) {
-        activeSessions.push(session);
+      try {
+        const parsedUser = JSON.parse(stored);
+        if (!parsedUser?.id) return;
+
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', parsedUser.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Erro ao carregar usuário:', error);
+          localStorage.removeItem('user');
+          setUser(null);
+          return;
+        }
+
+        if (!data) {
+          // Usuário não existe mais no banco, limpar localStorage
+          localStorage.removeItem('user');
+          setUser(null);
+        } else {
+          // Atualizar dados do usuário
+          const userData = data as any;
+          const updatedUser: User = {
+            id: userData.id,
+            username: userData.username,
+            password: userData.password,
+            role: userData.role as UserRole,
+            avatar: userData.avatar || undefined,
+          };
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar usuário:', err);
+        localStorage.removeItem('user');
+        setUser(null);
       }
-      
-      localStorage.setItem(sessionsKey, JSON.stringify(activeSessions));
-      return true;
-    }
-    return false;
-  };
-
-  const register = (username: string, password: string, role: UserRole = 'aluno'): { success: boolean; message: string } => {
-    const users = getUsers();
-    
-    if (users.find((u) => u.username === username)) {
-      return { success: false, message: 'Usuário já existe' };
-    }
-
-    if (username.length < 3) {
-      return { success: false, message: 'Usuário deve ter pelo menos 3 caracteres' };
-    }
-
-    if (password.length < 6) {
-      return { success: false, message: 'Senha deve ter pelo menos 6 caracteres' };
-    }
-
-    const newUser: User = {
-      id: Date.now().toString(),
-      username,
-      password,
-      role,
     };
 
-    const updatedUsers = [...users, newUser];
-    localStorage.setItem('users', JSON.stringify(updatedUsers));
-    
-    return { success: true, message: 'Cadastro realizado com sucesso!' };
+    loadUser();
+  }, []);
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      console.log('🔐 Tentando fazer login:', username);
+      console.log('🔑 Senha fornecida:', password.substring(0, 2) + '***');
+      
+      // Buscar usuário com username e password juntos (mais eficiente)
+      console.log('🔍 Buscando usuário no banco...');
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ Erro na query de login:', error);
+        console.error('Detalhes do erro:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        
+        // Se for erro de permissão, informar sobre RLS
+        if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+          console.error('🔒 PROBLEMA: Política RLS bloqueando leitura!');
+          console.error('💡 Solução: Execute supabase_fix_rls.sql no Supabase');
+        }
+        
+        return false;
+      }
+
+      if (!data) {
+        console.log('❌ Usuário não encontrado ou senha incorreta');
+        
+        // Verificar se pelo menos o usuário existe (para dar mensagem melhor)
+        const { data: userExists } = await supabase
+          .from('users')
+          .select('username')
+          .eq('username', username)
+          .limit(1);
+        
+        if (userExists && userExists.length > 0) {
+          console.log('⚠️ Usuário existe mas senha está incorreta');
+        } else {
+          console.log('⚠️ Usuário não existe no banco');
+          console.log('💡 Solução: Execute supabase_fix_login.sql no Supabase para criar usuários padrão');
+        }
+        
+        return false;
+      }
+
+      const userData = data as any;
+      console.log('✅ Login bem-sucedido!', {
+        id: userData.id,
+        username: userData.username,
+        role: userData.role
+      });
+
+      const foundUser: User = {
+        id: userData.id,
+        username: userData.username,
+        password: userData.password,
+        role: userData.role as UserRole,
+        avatar: userData.avatar || undefined,
+      };
+
+      setUser(foundUser);
+      localStorage.setItem('user', JSON.stringify(foundUser));
+
+      // Salvar sessão no banco de dados
+      try {
+        const sessionData: {
+          user_id: string;
+          username: string;
+          login_time: string;
+          is_active: boolean;
+        } = {
+          user_id: foundUser.id,
+          username: foundUser.username,
+          login_time: new Date().toISOString(),
+          is_active: true,
+        };
+        
+        const { error: sessionError } = await (supabase
+          .from('user_sessions')
+          .insert(sessionData as never));
+
+        if (sessionError) {
+          console.error('Erro ao salvar sessão:', sessionError);
+        }
+      } catch (sessionErr) {
+        console.error('Erro ao criar sessão:', sessionErr);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Erro no login:', err);
+      return false;
+    }
   };
 
-  const logout = () => {
+  const register = async (username: string, password: string, role: UserRole = 'aluno'): Promise<{ success: boolean; message: string }> => {
+    try {
+      console.log('📝 Tentando cadastrar usuário:', username);
+      
+      // Validações
+      if (username.length < 3) {
+        console.log('❌ Validação falhou: username muito curto');
+        return { success: false, message: 'Usuário deve ter pelo menos 3 caracteres' };
+      }
+
+      if (password.length < 6) {
+        console.log('❌ Validação falhou: senha muito curta');
+        return { success: false, message: 'Senha deve ter pelo menos 6 caracteres' };
+      }
+
+      console.log('✅ Validações passaram');
+
+      // Verificar se usuário já existe
+      console.log('🔍 Verificando se usuário já existe...');
+      const { data: existingUsers, error: checkError } = await supabase
+        .from('users')
+        .select('id, username')
+        .eq('username', username)
+        .limit(1);
+
+      if (checkError) {
+        console.error('❌ Erro ao verificar usuário:', checkError);
+        console.error('Detalhes:', {
+          code: checkError.code,
+          message: checkError.message,
+          details: checkError.details,
+          hint: checkError.hint
+        });
+        
+        // Se for erro de política RLS, retornar mensagem específica
+        if (checkError.code === '42501' || checkError.message?.includes('permission')) {
+          return { success: false, message: 'Erro de permissão. Verifique as políticas RLS no Supabase.' };
+        }
+      }
+
+      if (existingUsers && existingUsers.length > 0) {
+        const existingUser = existingUsers[0] as any;
+        console.log('❌ Usuário já existe:', existingUser.username);
+        return { success: false, message: 'Usuário já existe' };
+      }
+
+      console.log('✅ Usuário não existe, prosseguindo com cadastro...');
+
+      // Criar novo usuário no banco
+      const userData: {
+        username: string;
+        password: string;
+        role: UserRole;
+      } = {
+        username,
+        password,
+        role,
+      };
+      
+      console.log('💾 Tentando inserir usuário no banco...');
+      const { data: newUser, error: insertError } = await (supabase
+        .from('users')
+        .insert(userData as never)
+        .select()
+        .maybeSingle());
+
+      if (insertError) {
+        console.error('❌ Erro ao criar usuário:', insertError);
+        console.error('Detalhes do erro:', {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint
+        });
+        
+        // Verificar se é erro de duplicata
+        if (insertError.code === '23505' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
+          return { success: false, message: 'Usuário já existe' };
+        }
+        
+        // Verificar se é erro de política RLS
+        if (insertError.code === '42501' || insertError.message?.includes('permission') || insertError.message?.includes('policy')) {
+          console.log('❌ Erro: Política RLS bloqueando inserção');
+          return { success: false, message: 'Erro de permissão. Execute o script supabase_fix_rls.sql no Supabase para corrigir as políticas RLS.' };
+        }
+        
+        // Verificar se é erro de JWT/autenticação
+        if (insertError.code === 'PGRST301' || insertError.message?.includes('JWT')) {
+          console.log('❌ Erro: Problema de autenticação JWT');
+          return { success: false, message: 'Erro de autenticação. Verifique as variáveis de ambiente no arquivo .env e reinicie o servidor.' };
+        }
+        
+        // Erro genérico
+        console.log('❌ Erro desconhecido ao criar usuário');
+        return { success: false, message: `Erro ao criar usuário: ${insertError.message || 'Tente novamente'}` };
+      }
+
+      if (!newUser) {
+        console.log('❌ Usuário não foi criado (sem dados retornados)');
+        return { success: false, message: 'Erro ao criar usuário. Nenhum dado retornado do banco.' };
+      }
+
+      const newUserData = newUser as any;
+      console.log('✅ Usuário cadastrado com sucesso!', {
+        id: newUserData.id,
+        username: newUserData.username,
+        role: newUserData.role
+      });
+      return { success: true, message: 'Cadastro realizado com sucesso!' };
+    } catch (err: any) {
+      console.error('❌ Erro no registro:', err);
+      console.error('Stack trace:', err.stack);
+      return { success: false, message: `Erro ao criar usuário: ${err.message || 'Tente novamente'}` };
+    }
+  };
+
+  const logout = async () => {
     const currentUser = user;
     setUser(null);
     localStorage.removeItem('user');
-    
-    // Remover sessão do usuário ao fazer logout
+
+    // Atualizar sessão no banco de dados
     if (currentUser) {
-      const sessionsKey = 'userSessions';
-      const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-      const updatedSessions = sessions.filter((s: any) => s.userId !== currentUser.id);
-      localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
+      try {
+        const updateData: {
+          is_active: boolean;
+          logout_time: string;
+        } = {
+          is_active: false,
+          logout_time: new Date().toISOString(),
+        };
+        
+        await (supabase
+          .from('user_sessions')
+          .update(updateData as never)
+          .eq('user_id', currentUser.id)
+          .eq('is_active', true));
+      } catch (err) {
+        console.error('Erro ao atualizar sessão:', err);
+      }
     }
   };
 

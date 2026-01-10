@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
 import { useAuth } from '../context/AuthContext';
 import { QuizStatistics, UserRanking, UserQuizStats, User } from '../types';
+import { getAllQuizStatistics, getAllUserQuizStats, getActiveSessions, getAllUsersWithDetails, getUserRankings } from '../services/adminService';
 import './AdminDashboard.css';
 
 const PRESET_AVATARS = [
@@ -24,169 +25,108 @@ export function AdminDashboard() {
   const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
   const [activeUsers, setActiveUsers] = useState<any[]>([]);
   const [inactiveUsers, setInactiveUsers] = useState<any[]>([]);
+  const [usersWithAvatars, setUsersWithAvatars] = useState<Map<string, { type: 'image' | 'emoji'; value: string; color?: string }>>(new Map());
+
+  // Função auxiliar para obter avatar
+  const getUserAvatar = (userId: string, avatar: string | null | undefined) => {
+    if (avatar) {
+      // Se for uma imagem (data:image), retornar diretamente
+      if (avatar.startsWith('data:image')) {
+        return { type: 'image' as const, value: avatar };
+      }
+      // Se for um ID de avatar preset, buscar o emoji
+      const avatarData = PRESET_AVATARS.find((a) => a.id === avatar);
+      if (avatarData) {
+        return { type: 'emoji' as const, value: avatarData.emoji, color: avatarData.color };
+      }
+      // Se for um emoji direto
+      return { type: 'emoji' as const, value: avatar, color: '#2563eb' };
+    }
+    return { type: 'emoji' as const, value: '👤', color: '#2563eb' };
+  };
 
   const getSubjectName = (subjectId: string) => {
     return subjects.find((s) => s.id === subjectId)?.name || 'Desconhecida';
   };
 
-  // Carregar estatísticas
+  // Carregar estatísticas do Supabase
   useEffect(() => {
-    const loadStatistics = () => {
-      const statsKey = 'quizStatistics';
-      const stats = JSON.parse(localStorage.getItem(statsKey) || '[]');
-      setStatistics(stats);
-      
-      const sessionsKey = 'userSessions';
-      const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-      
-      // Filtrar sessões ativas (últimas 24 horas) e remover duplicatas
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      let activeSessions = sessions.filter((s: any) => {
-        const sessionDate = new Date(s.loginTime);
-        return sessionDate > oneDayAgo;
-      });
-      
-      // Remover sessões duplicadas (manter apenas a mais recente por usuário)
-      const uniqueSessions = new Map();
-      activeSessions.forEach((session: any) => {
-        const existing = uniqueSessions.get(session.userId);
-        if (!existing || new Date(session.loginTime) > new Date(existing.loginTime)) {
-          uniqueSessions.set(session.userId, session);
+    const loadStatistics = async () => {
+      try {
+        console.log('📥 Carregando estatísticas do Supabase...');
+
+        // Carregar estatísticas de quiz
+        const statsResult = await getAllQuizStatistics();
+        if (statsResult.success && statsResult.statistics) {
+          setStatistics(statsResult.statistics);
         }
-      });
-      activeSessions = Array.from(uniqueSessions.values());
-      
-      // Se o usuário atual está logado, garantir que ele apareça como online
-      if (currentUser) {
-        const currentUserSession = activeSessions.find((s: any) => s.userId === currentUser.id);
-        if (currentUserSession) {
-          // Atualizar o loginTime do usuário atual para agora (sempre online)
-          currentUserSession.loginTime = new Date().toISOString();
-          // Atualizar no localStorage também, removendo duplicatas
-          const updatedSessions = Array.from(
-            new Map(
-              sessions.map((s: any) => {
-                if (s.userId === currentUser.id) {
-                  return [s.userId, { ...s, loginTime: new Date().toISOString() }];
-                }
-                return [s.userId, s];
-              })
-            ).values()
-          );
-          localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
-        } else {
-          // Se não existe sessão, criar uma para o usuário atual
-          const newSession = {
-            userId: currentUser.id,
-            username: currentUser.username,
-            loginTime: new Date().toISOString(),
-          };
-          activeSessions.push(newSession);
-          const allSessions = [...sessions, newSession];
-          localStorage.setItem(sessionsKey, JSON.stringify(allSessions));
+
+        // Carregar sessões ativas
+        const sessionsResult = await getActiveSessions();
+        if (sessionsResult.success && sessionsResult.sessions) {
+          // Garantir que o usuário atual apareça como online
+          if (currentUser) {
+            const currentUserSession = sessionsResult.sessions.find((s) => s.userId === currentUser.id);
+            if (!currentUserSession) {
+              sessionsResult.sessions.push({
+                userId: currentUser.id,
+                username: currentUser.username,
+                loginTime: new Date().toISOString(),
+              });
+            }
+          }
+          setLoggedUsers(sessionsResult.sessions);
         }
-      }
-      
-      setLoggedUsers(activeSessions);
-      
-      // Carregar e calcular ranking de usuários
-      const userStatsKey = 'userQuizStats';
-      const userStats: UserQuizStats[] = JSON.parse(localStorage.getItem(userStatsKey) || '[]');
-      
-      // Carregar dados de usuários para obter avatares
-      const usersKey = 'users';
-      const users: User[] = JSON.parse(localStorage.getItem(usersKey) || '[]');
-      
-      // Calcular ranking
-      const rankings: UserRanking[] = userStats
-        .map((stat) => {
-          const user = users.find((u) => u.id === stat.userId);
-          const accuracy = stat.totalQuestions > 0 
-            ? Math.round((stat.totalFirstAttemptCorrect / stat.totalQuestions) * 100)
-            : 0;
+
+        // Carregar ranking
+        const rankingsResult = await getUserRankings();
+        if (rankingsResult.success && rankingsResult.rankings) {
+          setUserRankings(rankingsResult.rankings);
+        }
+
+        // Carregar todos os usuários
+        const usersResult = await getAllUsersWithDetails();
+        if (usersResult.success && usersResult.users) {
+          // Separar usuários em ativos e inativos (últimos 7 dias)
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
           
-          return {
-            position: 0, // Será calculado após ordenação
-            userId: stat.userId,
-            username: stat.username,
-            totalQuizzes: stat.totalQuizzes,
-            totalFirstAttemptCorrect: stat.totalFirstAttemptCorrect,
-            accuracy: accuracy,
-            avatar: user?.avatar,
-          };
-        })
-        .sort((a, b) => {
-          // Ordenar por: 1) Total de quizzes, 2) Acertos de primeira, 3) Precisão
-          if (b.totalQuizzes !== a.totalQuizzes) {
-            return b.totalQuizzes - a.totalQuizzes;
-          }
-          if (b.totalFirstAttemptCorrect !== a.totalFirstAttemptCorrect) {
-            return b.totalFirstAttemptCorrect - a.totalFirstAttemptCorrect;
-          }
-          return b.accuracy - a.accuracy;
-        })
-        .map((ranking, index) => ({
-          ...ranking,
-          position: index + 1,
-        }));
-      
-      setUserRankings(rankings);
-      
-      // Carregar todos os usuários e suas últimas sessões
-      const allUsers = JSON.parse(localStorage.getItem('users') || '[]');
-      const allSessions = JSON.parse(localStorage.getItem('userSessions') || '[]');
-      
-      // Criar um mapa com a última sessão de cada usuário
-      const lastLoginMap = new Map<string, string>();
-      allSessions.forEach((session: any) => {
-        const existing = lastLoginMap.get(session.userId);
-        if (!existing || new Date(session.loginTime) > new Date(existing)) {
-          lastLoginMap.set(session.userId, session.loginTime);
+          const active = usersResult.users.filter((u) => {
+            if (!u.lastLogin) return false;
+            return new Date(u.lastLogin) > sevenDaysAgo;
+          });
+          
+          const inactive = usersResult.users.filter((u) => {
+            if (!u.lastLogin) return true;
+            return new Date(u.lastLogin) <= sevenDaysAgo;
+          });
+          
+          setActiveUsers(active);
+          setInactiveUsers(inactive);
+          
+          // Criar mapa de avatares
+          const avatarMap = new Map<string, { type: 'image' | 'emoji'; value: string; color?: string }>();
+          usersResult.users.forEach((u) => {
+            avatarMap.set(u.id, getUserAvatar(u.id, u.avatar));
+          });
+          setUsersWithAvatars(avatarMap);
         }
-      });
-      
-      // Separar usuários em ativos e inativos (últimos 7 dias)
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const active: any[] = [];
-      const inactive: any[] = [];
-      
-      allUsers.forEach((user: User) => {
-        const lastLogin = lastLoginMap.get(user.id);
-        const userWithLastLogin = {
-          ...user,
-          lastLogin: lastLogin || null,
-        };
-        
-        if (lastLogin && new Date(lastLogin) > sevenDaysAgo) {
-          active.push(userWithLastLogin);
-        } else {
-          inactive.push(userWithLastLogin);
-        }
-      });
-      
-      // Ordenar ativos por último login (mais recente primeiro)
-      active.sort((a, b) => {
-        if (!a.lastLogin) return 1;
-        if (!b.lastLogin) return -1;
-        return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
-      });
-      
-      // Ordenar inativos por último login (mais recente primeiro)
-      inactive.sort((a, b) => {
-        if (!a.lastLogin && !b.lastLogin) return 0;
-        if (!a.lastLogin) return 1;
-        if (!b.lastLogin) return -1;
-        return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
-      });
-      
-      setActiveUsers(active);
-      setInactiveUsers(inactive);
+      } catch (err) {
+        console.error('❌ Erro ao carregar estatísticas:', err);
+      }
     };
-    
+
+    // Carregar imediatamente
     loadStatistics();
-    // Atualizar a cada 5 segundos
-    const interval = setInterval(loadStatistics, 5000);
-    return () => clearInterval(interval);
+    
+    // Configurar intervalo para recarregar a cada 30 segundos
+    const intervalId = setInterval(() => {
+      loadStatistics();
+    }, 30000);
+    
+    // Cleanup: limpar intervalo quando o componente desmontar ou currentUser mudar
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [currentUser]);
 
   // Calcular matéria mais realizada
@@ -250,17 +190,7 @@ export function AdminDashboard() {
                   ? `${Math.floor(timeAgo / 60)} h atrás`
                   : `${Math.floor(timeAgo / 1440)} dias atrás`;
                 
-                const getUserAvatar = () => {
-                  const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.userId}`) || '{}');
-                  if (userProfile.uploadedImage) return { type: 'image', value: userProfile.uploadedImage };
-                  if (userProfile.avatar) {
-                    const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
-                    return { type: 'emoji', value: avatar ? avatar.emoji : '👤', color: avatar?.color || '#2563eb' };
-                  }
-                  return { type: 'emoji', value: '👤', color: '#2563eb' };
-                };
-
-                const avatar = getUserAvatar();
+                const avatar = usersWithAvatars.get(user.userId) || getUserAvatar(user.userId, undefined);
                 
                 // Verificar se está online (últimos 5 minutos) ou se é o usuário atual
                 const isOnline = timeAgo < 5 || (currentUser && user.userId === currentUser.id);
@@ -337,17 +267,7 @@ export function AdminDashboard() {
                   <p className="users-empty">Nenhum usuário ativo</p>
                 ) : (
                   activeUsers.map((user) => {
-                    const getUserAvatar = () => {
-                      const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
-                      if (userProfile.uploadedImage) return { type: 'image', value: userProfile.uploadedImage };
-                      if (userProfile.avatar) {
-                        const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
-                        return { type: 'emoji', value: avatar ? avatar.emoji : '👤', color: avatar?.color || '#2563eb' };
-                      }
-                      return { type: 'emoji', value: '👤', color: '#2563eb' };
-                    };
-                    
-                    const avatar = getUserAvatar();
+                    const avatar = usersWithAvatars.get(user.id) || getUserAvatar(user.id, user.avatar);
                     const formatLastLogin = (loginTime: string | null) => {
                       if (!loginTime) return 'Nunca';
                       const date = new Date(loginTime);
@@ -395,17 +315,7 @@ export function AdminDashboard() {
                   <p className="users-empty">Nenhum usuário inativo</p>
                 ) : (
                   inactiveUsers.map((user) => {
-                    const getUserAvatar = () => {
-                      const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
-                      if (userProfile.uploadedImage) return { type: 'image', value: userProfile.uploadedImage };
-                      if (userProfile.avatar) {
-                        const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
-                        return { type: 'emoji', value: avatar ? avatar.emoji : '👤', color: avatar?.color || '#2563eb' };
-                      }
-                      return { type: 'emoji', value: '👤', color: '#2563eb' };
-                    };
-                    
-                    const avatar = getUserAvatar();
+                    const avatar = usersWithAvatars.get(user.id) || getUserAvatar(user.id, user.avatar);
                     const formatLastLogin = (loginTime: string | null) => {
                       if (!loginTime) return 'Nunca';
                       const date = new Date(loginTime);
@@ -446,24 +356,7 @@ export function AdminDashboard() {
           ) : (
             <div className="ranking-list">
               {userRankings.map((ranking) => {
-                const getAvatar = () => {
-                  // Buscar avatar do perfil do usuário (mesmo método usado para usuários logados)
-                  const userProfile = JSON.parse(localStorage.getItem(`userProfile_${ranking.userId}`) || '{}');
-                  if (userProfile.uploadedImage) {
-                    return { type: 'image' as const, value: userProfile.uploadedImage };
-                  }
-                  if (userProfile.avatar) {
-                    const avatarData = PRESET_AVATARS.find((a) => a.id === userProfile.avatar);
-                    if (avatarData) {
-                      return { type: 'emoji' as const, value: avatarData.emoji, color: avatarData.color };
-                    }
-                  }
-                  // Avatar padrão
-                  const defaultAvatar = PRESET_AVATARS[0];
-                  return { type: 'emoji' as const, value: defaultAvatar.emoji, color: defaultAvatar.color };
-                };
-                
-                const avatar = getAvatar();
+                const avatar = usersWithAvatars.get(ranking.userId) || getUserAvatar(ranking.userId, ranking.avatar);
                 const getMedal = (position: number) => {
                   if (position === 1) return '🥇';
                   if (position === 2) return '🥈';

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Subject, Question, QuizResult } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { saveAnsweredQuestions, getAnsweredQuestions } from '../services/quizService';
 import './Quiz.css';
 
 interface QuizProps {
@@ -12,6 +14,7 @@ interface QuizProps {
 }
 
 export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKey }: QuizProps) {
+  const { user } = useAuth();
   // Sistema simplificado: todas as questões são respondidas uma vez
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answeredQuestions, setAnsweredQuestions] = useState<Map<string, boolean>>(new Map()); // questionId -> isCorrect
@@ -39,15 +42,22 @@ export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKe
     totalAttemptsRef.current = { correct: 0, wrong: 0 };
     setTotalAttempts({ correct: 0, wrong: 0 });
     
-    // Carregar questões já respondidas anteriormente do localStorage
-    const statsKey = 'quizStatistics';
-    const existingStats = JSON.parse(localStorage.getItem(statsKey) || '[]');
-    const subjectStats = existingStats.find((s: any) => s.subjectId === subject.id);
+    // Carregar questões já respondidas anteriormente do Supabase
+    const loadAnsweredQuestions = async () => {
+      if (user) {
+        try {
+          const result = await getAnsweredQuestions(user.id, subject.id);
+          if (result.success && result.questionIds) {
+            setPreviouslyAnsweredQuestions(new Set(result.questionIds));
+            console.log(`✅ ${result.questionIds.length} questão(ões) já respondida(s) carregada(s)`);
+          }
+        } catch (err) {
+          console.error('❌ Erro ao carregar questões respondidas:', err);
+        }
+      }
+    };
     
-    // Carregar histórico de questões respondidas por matéria
-    const answeredHistoryKey = `answeredQuestions_${subject.id}`;
-    const answeredHistory = JSON.parse(localStorage.getItem(answeredHistoryKey) || '[]');
-    setPreviouslyAnsweredQuestions(new Set(answeredHistory));
+    loadAnsweredQuestions();
   }, [quizKey, questions, subject.id]);
 
   const currentQuestion = questions[currentQuestionIndex];
@@ -158,11 +168,27 @@ export function Quiz({ subject, questions, onComplete, onBack, onRestart, quizKe
     // Usar o map passado como parâmetro ou o estado atual
     const answeredMap = finalAnsweredQuestions || answeredQuestions;
     
-    // Salvar histórico de questões respondidas no localStorage
-    const answeredHistoryKey = `answeredQuestions_${subject.id}`;
-    const currentHistory = JSON.parse(localStorage.getItem(answeredHistoryKey) || '[]');
-    const updatedHistory = Array.from(new Set([...currentHistory, ...Array.from(previouslyAnsweredQuestions)]));
-    localStorage.setItem(answeredHistoryKey, JSON.stringify(updatedHistory));
+    // Salvar histórico de questões respondidas no Supabase
+    if (user) {
+      const allAnsweredQuestionIds = Array.from(new Set([
+        ...Array.from(previouslyAnsweredQuestions),
+        ...Array.from(answeredMap.keys())
+      ]));
+      
+      if (allAnsweredQuestionIds.length > 0) {
+        saveAnsweredQuestions(user.id, subject.id, allAnsweredQuestionIds)
+          .then((result) => {
+            if (result.success) {
+              console.log('✅ Questões respondidas salvas no Supabase');
+            } else {
+              console.error('❌ Erro ao salvar questões respondidas:', result.error);
+            }
+          })
+          .catch((err) => {
+            console.error('❌ Erro ao salvar questões respondidas:', err);
+          });
+      }
+    }
     
     // Criar resultados: usar o resultado da primeira tentativa de cada questão
     // Se a questão já foi respondida antes, usar o resultado da primeira vez

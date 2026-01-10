@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Subject, Question, QuizResult, UserQuizStats } from '../types';
 import { Quiz } from './Quiz';
 import { getSubjectConfig } from '../utils/subjectConfig';
+import { saveQuizStatistics, saveUserQuizStats } from '../services/quizService';
 import './AlunoDashboard.css';
 
 interface AlunoDashboardProps {
@@ -38,81 +39,57 @@ export function AlunoDashboard({ onQuizStateChange }: AlunoDashboardProps) {
     setQuizKey(Date.now()); // Nova key única quando iniciar novo quiz
   };
 
-  const handleQuizComplete = (quizResults: QuizResult[], attempts?: { correct: number; wrong: number }) => {
+  const handleQuizComplete = async (quizResults: QuizResult[], attempts?: { correct: number; wrong: number }) => {
     setResults(quizResults);
     setIsQuizActive(false);
     
-    // Salvar estatísticas
-    if (selectedSubject) {
+    // Salvar estatísticas no Supabase
+    if (selectedSubject && user) {
       // Usar as tentativas reais do quiz (acertos e erros durante todo o processo)
       // Se não foram fornecidas, usar o resultado final como fallback
       const correctCount = attempts?.correct ?? quizResults.filter((r) => r.isCorrect).length;
       const wrongCount = attempts?.wrong ?? (quizResults.length - correctCount);
       
-      // Debug: log para verificar os valores
-      console.log('Estatísticas do Quiz:', {
+      console.log('💾 Salvando estatísticas do quiz no Supabase:', {
+        userId: user.id,
         subject: selectedSubject.name,
+        subjectId: selectedSubject.id,
         correct: correctCount,
         wrong: wrongCount,
         attempts: attempts
       });
       
-      // Obter estatísticas existentes
-      const statsKey = 'quizStatistics';
-      const existingStats = JSON.parse(localStorage.getItem(statsKey) || '[]');
-      
-      // Encontrar ou criar estatística para esta matéria
-      const subjectStatsIndex = existingStats.findIndex(
-        (s: any) => s.subjectId === selectedSubject.id
-      );
-      
-      if (subjectStatsIndex >= 0) {
-        existingStats[subjectStatsIndex].totalAttempts += 1;
-        existingStats[subjectStatsIndex].correctAnswers += correctCount;
-        existingStats[subjectStatsIndex].wrongAnswers += wrongCount;
-        existingStats[subjectStatsIndex].lastAttemptDate = new Date().toISOString();
-      } else {
-        existingStats.push({
-          subjectId: selectedSubject.id,
-          totalAttempts: 1,
-          correctAnswers: correctCount,
-          wrongAnswers: wrongCount,
-          lastAttemptDate: new Date().toISOString(),
-        });
-      }
-      
-      console.log('Estatísticas salvas:', existingStats[subjectStatsIndex >= 0 ? subjectStatsIndex : existingStats.length - 1]);
-      localStorage.setItem(statsKey, JSON.stringify(existingStats));
-      
-      // Salvar estatísticas por usuário para o ranking
-      if (user) {
-        const userStatsKey = 'userQuizStats';
-        const existingUserStats = JSON.parse(localStorage.getItem(userStatsKey) || '[]');
-        const userStatsIndex = existingUserStats.findIndex(
-          (s: UserQuizStats) => s.userId === user.id
+      try {
+        // Salvar estatísticas por matéria
+        const statsResult = await saveQuizStatistics(
+          user.id,
+          selectedSubject.id,
+          correctCount,
+          wrongCount
         );
         
-        // O correctCount já representa acertos de primeira tentativa (conforme lógica do Quiz.tsx)
+        if (!statsResult.success) {
+          console.error('❌ Erro ao salvar estatísticas de quiz:', statsResult.error);
+        }
+        
+        // Salvar estatísticas gerais do usuário
         const firstAttemptCorrect = correctCount;
         const totalQuestions = quizResults.length;
         
-        if (userStatsIndex >= 0) {
-          existingUserStats[userStatsIndex].totalQuizzes += 1;
-          existingUserStats[userStatsIndex].totalFirstAttemptCorrect += firstAttemptCorrect;
-          existingUserStats[userStatsIndex].totalQuestions += totalQuestions;
-          existingUserStats[userStatsIndex].lastQuizDate = new Date().toISOString();
-        } else {
-          existingUserStats.push({
-            userId: user.id,
-            username: user.username,
-            totalQuizzes: 1,
-            totalFirstAttemptCorrect: firstAttemptCorrect,
-            totalQuestions: totalQuestions,
-            lastQuizDate: new Date().toISOString(),
-          });
+        const userStatsResult = await saveUserQuizStats(
+          user.id,
+          user.username,
+          firstAttemptCorrect,
+          totalQuestions
+        );
+        
+        if (!userStatsResult.success) {
+          console.error('❌ Erro ao salvar estatísticas do usuário:', userStatsResult.error);
         }
         
-        localStorage.setItem(userStatsKey, JSON.stringify(existingUserStats));
+        console.log('✅ Estatísticas salvas com sucesso no Supabase');
+      } catch (err) {
+        console.error('❌ Erro ao salvar estatísticas:', err);
       }
     }
   };

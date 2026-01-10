@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Subject, Question } from '../types';
 import { subjects as defaultSubjects, questions as defaultQuestions } from '../data/mockData';
+import { supabase } from '../lib/supabase';
 
 interface QuizContextType {
   subjects: Subject[];
@@ -16,86 +17,196 @@ interface QuizContextType {
 const QuizContext = createContext<QuizContextType | undefined>(undefined);
 
 export function QuizProvider({ children }: { children: ReactNode }) {
-  const [subjects, setSubjects] = useState<Subject[]>(() => {
-    const stored = localStorage.getItem('subjects');
-    // Se não houver dados salvos ou se os dados padrão tiverem mais matérias, usar os padrões
-    if (!stored || defaultSubjects.length > JSON.parse(stored).length) {
-      localStorage.setItem('subjects', JSON.stringify(defaultSubjects));
-      return defaultSubjects;
-    }
-    return JSON.parse(stored);
-  });
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [questions, setQuestions] = useState<Question[]>(() => {
-    const stored = localStorage.getItem('questions');
-    // Se não houver dados salvos, usar os padrões
-    if (!stored) {
-      localStorage.setItem('questions', JSON.stringify(defaultQuestions));
-      return defaultQuestions;
-    }
-    
-    const storedQuestions = JSON.parse(stored);
-    // Sempre usar os dados padrão se tiverem mais questões ou se for a primeira vez
-    // Isso garante que novas questões sejam sempre carregadas
-    if (defaultQuestions.length >= storedQuestions.length) {
-      localStorage.setItem('questions', JSON.stringify(defaultQuestions));
-      return defaultQuestions;
-    }
-    
-    return storedQuestions;
-  });
-
-  const addSubject = (subject: Subject) => {
-    const newSubjects = [...subjects, subject];
-    setSubjects(newSubjects);
-    localStorage.setItem('subjects', JSON.stringify(newSubjects));
-  };
-
-  const addQuestion = (question: Question) => {
-    const newQuestions = [...questions, question];
-    setQuestions(newQuestions);
-    localStorage.setItem('questions', JSON.stringify(newQuestions));
-  };
-
-  const updateQuestion = (question: Question) => {
-    const newQuestions = questions.map((q) =>
-      q.id === question.id ? question : q
-    );
-    setQuestions(newQuestions);
-    localStorage.setItem('questions', JSON.stringify(newQuestions));
-  };
-
-  const deleteQuestion = (questionId: string) => {
-    const newQuestions = questions.filter((q) => q.id !== questionId);
-    setQuestions(newQuestions);
-    localStorage.setItem('questions', JSON.stringify(newQuestions));
-  };
-
-  // Sincronizar com dados padrão quando houver mais questões no mockData
+  // Carregar subjects e questions do Supabase
   useEffect(() => {
-    const storedQuestions = localStorage.getItem('questions');
-    if (!storedQuestions) {
-      setQuestions(defaultQuestions);
-      localStorage.setItem('questions', JSON.stringify(defaultQuestions));
-    } else {
-      const parsed = JSON.parse(storedQuestions);
-      // Se os dados padrão tiverem mais ou igual número de questões, atualizar
-      if (defaultQuestions.length >= parsed.length) {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        console.log('📥 Carregando subjects e questions do Supabase...');
+
+        // Carregar subjects
+        const { data: subjectsData, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('*')
+          .order('name');
+
+        if (subjectsError) {
+          console.error('❌ Erro ao carregar subjects:', subjectsError);
+          // Fallback para dados padrão
+          setSubjects(defaultSubjects);
+        } else {
+          const loadedSubjects: Subject[] = (subjectsData || []).map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            description: s.description || undefined,
+          }));
+          console.log(`✅ ${loadedSubjects.length} subject(s) carregado(s)`);
+          setSubjects(loadedSubjects.length > 0 ? loadedSubjects : defaultSubjects);
+        }
+
+        // Carregar questions
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('questions')
+          .select('*')
+          .order('created_at');
+
+        if (questionsError) {
+          console.error('❌ Erro ao carregar questions:', questionsError);
+          // Fallback para dados padrão
+          setQuestions(defaultQuestions);
+        } else {
+          const loadedQuestions: Question[] = (questionsData || []).map((q: any) => ({
+            id: q.id,
+            subjectId: q.subject_id,
+            question: q.question,
+            options: q.options as string[],
+            correctAnswer: q.correct_answer,
+            funFact: q.fun_fact || undefined,
+          }));
+          console.log(`✅ ${loadedQuestions.length} question(s) carregada(s)`);
+          setQuestions(loadedQuestions.length > 0 ? loadedQuestions : defaultQuestions);
+        }
+      } catch (err) {
+        console.error('❌ Erro ao carregar dados:', err);
+        // Fallback para dados padrão
+        setSubjects(defaultSubjects);
         setQuestions(defaultQuestions);
-        localStorage.setItem('questions', JSON.stringify(defaultQuestions));
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+
+    loadData();
   }, []);
+
+  const addSubject = async (subject: Subject) => {
+    try {
+      console.log('➕ Adicionando subject:', subject);
+      
+      const { data, error } = await supabase
+        .from('subjects')
+        .insert({
+          id: subject.id,
+          name: subject.name,
+          description: subject.description || null,
+        } as never)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Erro ao adicionar subject:', error);
+        throw error;
+      }
+
+      const newSubjects = [...subjects, subject];
+      setSubjects(newSubjects);
+      console.log('✅ Subject adicionado com sucesso');
+    } catch (err) {
+      console.error('❌ Erro ao adicionar subject:', err);
+      throw err;
+    }
+  };
+
+  const addQuestion = async (question: Question) => {
+    try {
+      console.log('➕ Adicionando question:', question.id);
+      
+      const { data, error } = await supabase
+        .from('questions')
+        .insert({
+          id: question.id,
+          subject_id: question.subjectId,
+          question: question.question,
+          options: question.options,
+          correct_answer: question.correctAnswer,
+          fun_fact: question.funFact || null,
+        } as never)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Erro ao adicionar question:', error);
+        throw error;
+      }
+
+      const newQuestions = [...questions, question];
+      setQuestions(newQuestions);
+      console.log('✅ Question adicionada com sucesso');
+    } catch (err) {
+      console.error('❌ Erro ao adicionar question:', err);
+      throw err;
+    }
+  };
+
+  const updateQuestion = async (question: Question) => {
+    try {
+      console.log('✏️ Atualizando question:', question.id);
+      
+      const { error } = await supabase
+        .from('questions')
+        .update({
+          subject_id: question.subjectId,
+          question: question.question,
+          options: question.options,
+          correct_answer: question.correctAnswer,
+          fun_fact: question.funFact || null,
+        } as never)
+        .eq('id', question.id);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar question:', error);
+        throw error;
+      }
+
+      const newQuestions = questions.map((q) =>
+        q.id === question.id ? question : q
+      );
+      setQuestions(newQuestions);
+      console.log('✅ Question atualizada com sucesso');
+    } catch (err) {
+      console.error('❌ Erro ao atualizar question:', err);
+      throw err;
+    }
+  };
+
+  const deleteQuestion = async (questionId: string) => {
+    try {
+      console.log('🗑️ Deletando question:', questionId);
+      
+      const { error } = await supabase
+        .from('questions')
+        .delete()
+        .eq('id', questionId);
+
+      if (error) {
+        console.error('❌ Erro ao deletar question:', error);
+        throw error;
+      }
+
+      const newQuestions = questions.filter((q) => q.id !== questionId);
+      setQuestions(newQuestions);
+      console.log('✅ Question deletada com sucesso');
+    } catch (err) {
+      console.error('❌ Erro ao deletar question:', err);
+      throw err;
+    }
+  };
+
+  // Removido: sincronização com localStorage não é mais necessária
 
   const getQuestionsBySubject = (subjectId: string) => {
     return questions.filter((q) => q.subjectId === subjectId);
   };
 
   const resetToDefaults = () => {
+    // Reset apenas no estado local (não deleta do banco)
     setSubjects(defaultSubjects);
     setQuestions(defaultQuestions);
-    localStorage.setItem('subjects', JSON.stringify(defaultSubjects));
-    localStorage.setItem('questions', JSON.stringify(defaultQuestions));
+    console.log('⚠️ Reset para dados padrão (apenas no estado local)');
   };
 
   return (

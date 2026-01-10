@@ -95,11 +95,15 @@ export function Dashboard() {
   }
 
   const getUserAvatar = () => {
-    const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
-    if (userProfile.uploadedImage) return userProfile.uploadedImage;
-    if (userProfile.avatar) {
-      const avatar = PRESET_AVATARS.find(a => a.id === userProfile.avatar);
-      return avatar ? avatar.emoji : '👤';
+    // Usar avatar do usuário do banco (já atualizado pelo profileService)
+    if (user.avatar) {
+      // Se for uma imagem (data:image), retornar diretamente
+      if (user.avatar.startsWith('data:image')) {
+        return user.avatar;
+      }
+      // Se for um ID de avatar preset, buscar o emoji
+      const avatar = PRESET_AVATARS.find(a => a.id === user.avatar);
+      return avatar ? avatar.emoji : user.avatar;
     }
     return '👤';
   };

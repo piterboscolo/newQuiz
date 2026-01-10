@@ -230,6 +230,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       
       console.log('💾 Tentando inserir usuário no banco...');
+      console.log('📤 Dados a inserir:', { username, role, password: '***' });
+      
       const { data: newUser, error: insertError } = await (supabase
         .from('users')
         .insert(userData as never)
@@ -247,37 +249,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Verificar se é erro de duplicata
         if (insertError.code === '23505' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
+          console.log('⚠️ Usuário já existe no banco');
           return { success: false, message: 'Usuário já existe' };
         }
         
         // Verificar se é erro de política RLS
         if (insertError.code === '42501' || insertError.message?.includes('permission') || insertError.message?.includes('policy')) {
-          console.log('❌ Erro: Política RLS bloqueando inserção');
+          console.error('🔒 ERRO CRÍTICO: Política RLS bloqueando inserção!');
+          console.error('💡 Solução: Execute o script supabase_fix_rls.sql no Supabase');
+          console.error('📖 Veja TROUBLESHOOTING_PRODUCAO.md para mais detalhes');
           return { success: false, message: 'Erro de permissão. Execute o script supabase_fix_rls.sql no Supabase para corrigir as políticas RLS.' };
         }
         
         // Verificar se é erro de JWT/autenticação
-        if (insertError.code === 'PGRST301' || insertError.message?.includes('JWT')) {
-          console.log('❌ Erro: Problema de autenticação JWT');
-          return { success: false, message: 'Erro de autenticação. Verifique as variáveis de ambiente no arquivo .env e reinicie o servidor.' };
+        if (insertError.code === 'PGRST301' || insertError.message?.includes('JWT') || insertError.message?.includes('secret')) {
+          console.error('🔒 ERRO CRÍTICO: Problema de autenticação JWT!');
+          console.error('💡 Solução: Verifique as variáveis de ambiente no Vercel');
+          console.error('📖 Veja TROUBLESHOOTING_PRODUCAO.md para mais detalhes');
+          return { success: false, message: 'Erro de autenticação. Verifique as variáveis de ambiente no Vercel e faça um novo deploy.' };
         }
         
         // Erro genérico
-        console.log('❌ Erro desconhecido ao criar usuário');
+        console.error('❌ Erro desconhecido ao criar usuário');
         return { success: false, message: `Erro ao criar usuário: ${insertError.message || 'Tente novamente'}` };
       }
 
       if (!newUser) {
-        console.log('❌ Usuário não foi criado (sem dados retornados)');
-        return { success: false, message: 'Erro ao criar usuário. Nenhum dado retornado do banco.' };
+        console.error('❌ Usuário não foi criado (sem dados retornados)');
+        console.error('💡 Isso pode indicar que:');
+        console.error('   1. A inserção foi bloqueada silenciosamente');
+        console.error('   2. As políticas RLS não permitem retornar dados');
+        console.error('   3. Há um problema com a query SELECT após INSERT');
+        
+        // Tentar verificar se o usuário foi criado mesmo assim
+        console.log('🔍 Verificando se o usuário foi criado mesmo sem retorno...');
+        const { data: verifyUser } = await supabase
+          .from('users')
+          .select('id, username, role')
+          .eq('username', username)
+          .maybeSingle();
+        
+        if (verifyUser) {
+          console.log('✅ Usuário FOI criado! Mas não foi retornado pela query INSERT');
+          console.log('📋 Dados do usuário:', verifyUser);
+          return { success: true, message: 'Cadastro realizado com sucesso!' };
+        } else {
+          console.error('❌ Usuário realmente NÃO foi criado no banco');
+          return { success: false, message: 'Erro ao criar usuário. Nenhum dado retornado do banco.' };
+        }
       }
 
       const newUserData = newUser as any;
       console.log('✅ Usuário cadastrado com sucesso!', {
         id: newUserData.id,
         username: newUserData.username,
-        role: newUserData.role
+        role: newUserData.role,
+        created_at: newUserData.created_at
       });
+      
+      // Verificação adicional: confirmar que o usuário existe no banco
+      console.log('🔍 Verificação adicional: confirmando que usuário existe no banco...');
+      const { data: confirmUser } = await supabase
+        .from('users')
+        .select('id, username')
+        .eq('id', newUserData.id)
+        .maybeSingle();
+      
+      if (confirmUser) {
+        console.log('✅ Confirmação: Usuário existe no banco de dados');
+      } else {
+        console.error('⚠️ AVISO: Usuário não encontrado na verificação adicional!');
+      }
+      
       return { success: true, message: 'Cadastro realizado com sucesso!' };
     } catch (err: any) {
       console.error('❌ Erro no registro:', err);

@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { getUserProfile, saveUserProfile } from '../services/profileService';
 import './Profile.css';
 
 const PRESET_AVATARS = [
@@ -19,25 +20,44 @@ interface ProfileProps {
 
 export function Profile({ onBack }: ProfileProps) {
   const { user } = useAuth();
-  const [selectedAvatar, setSelectedAvatar] = useState<string>(() => {
-    if (!user) return '';
-    const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
-    return userProfile.avatar || '';
-  });
-  const [uploadedImage, setUploadedImage] = useState<string>(() => {
-    if (!user) return '';
-    const userProfile = JSON.parse(localStorage.getItem(`userProfile_${user.id}`) || '{}');
-    return userProfile.uploadedImage || '';
-  });
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('');
+  const [uploadedImage, setUploadedImage] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'preset' | 'upload'>('preset');
   const [hasChanges, setHasChanges] = useState(false);
+  const [loading, setLoading] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Estados temporários para mudanças não salvas
-  const [tempSelectedAvatar, setTempSelectedAvatar] = useState<string>(selectedAvatar);
-  const [tempUploadedImage, setTempUploadedImage] = useState<string>(uploadedImage);
+  const [tempSelectedAvatar, setTempSelectedAvatar] = useState<string>('');
+  const [tempUploadedImage, setTempUploadedImage] = useState<string>('');
+
+  // Carregar perfil do Supabase
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+
+      try {
+        setLoading(true);
+        const result = await getUserProfile(user.id);
+        
+        if (result.success && result.profile) {
+          setSelectedAvatar(result.profile.avatar || '');
+          setUploadedImage(result.profile.uploaded_image || '');
+          setTempSelectedAvatar(result.profile.avatar || '');
+          setTempUploadedImage(result.profile.uploaded_image || '');
+        }
+      } catch (err) {
+        console.error('❌ Erro ao carregar perfil:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [user]);
 
   if (!user) return null;
+  if (loading) return <div className="profile-container">Carregando perfil...</div>;
 
   const handleAvatarSelect = (avatarId: string) => {
     setTempSelectedAvatar(avatarId);
@@ -80,13 +100,29 @@ export function Profile({ onBack }: ProfileProps) {
     }
   };
 
-  const handleSave = () => {
-    saveProfile(tempSelectedAvatar, tempUploadedImage);
-    setSelectedAvatar(tempSelectedAvatar);
-    setUploadedImage(tempUploadedImage);
-    setHasChanges(false);
-    if (onBack) {
-      onBack();
+  const handleSave = async () => {
+    if (!user) return;
+
+    try {
+      const result = await saveUserProfile(
+        user.id,
+        tempSelectedAvatar || null,
+        tempUploadedImage || null
+      );
+
+      if (result.success) {
+        setSelectedAvatar(tempSelectedAvatar);
+        setUploadedImage(tempUploadedImage);
+        setHasChanges(false);
+        if (onBack) {
+          onBack();
+        }
+      } else {
+        alert(`Erro ao salvar perfil: ${result.error}`);
+      }
+    } catch (err) {
+      console.error('❌ Erro ao salvar perfil:', err);
+      alert('Erro ao salvar perfil. Tente novamente.');
     }
   };
 
@@ -99,36 +135,7 @@ export function Profile({ onBack }: ProfileProps) {
     }
   };
 
-  const saveProfile = (avatar: string, image: string) => {
-    if (!user) return;
-    const profile = {
-      avatar,
-      uploadedImage: image,
-    };
-    localStorage.setItem(`userProfile_${user.id}`, JSON.stringify(profile));
-    
-    // Atualizar sessão do usuário
-    const sessionsKey = 'userSessions';
-    const sessions = JSON.parse(localStorage.getItem(sessionsKey) || '[]');
-    const updatedSessions = sessions.map((s: any) => {
-      if (s.userId === user.id) {
-        return { ...s, avatar: avatar || image || undefined };
-      }
-      return s;
-    });
-    localStorage.setItem(sessionsKey, JSON.stringify(updatedSessions));
-    
-    // Atualizar também no array de usuários para manter sincronizado
-    const usersKey = 'users';
-    const users = JSON.parse(localStorage.getItem(usersKey) || '[]');
-    const updatedUsers = users.map((u: any) => {
-      if (u.id === user.id) {
-        return { ...u, avatar: avatar || image || undefined };
-      }
-      return u;
-    });
-    localStorage.setItem(usersKey, JSON.stringify(updatedUsers));
-  };
+  // Removido: saveProfile agora usa saveUserProfile do serviço
 
   const getCurrentAvatar = () => {
     const currentImage = tempUploadedImage || uploadedImage;

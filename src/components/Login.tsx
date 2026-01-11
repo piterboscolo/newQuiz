@@ -119,7 +119,7 @@ export function Login() {
           <p className="login-subtitle">{isRegister ? 'Crie sua conta e comece a aprender' : 'Bem-vindo de volta!'}</p>
         </div>
         
-        <form onSubmit={isRegister ? handleRegister : handleLogin} className="login-form">
+        <form onSubmit={isRegister ? handleRegister : handleLogin} className="login-form" autoComplete="off">
           <div className="form-group">
             <label htmlFor="username">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -134,6 +134,9 @@ export function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Digite seu usuário"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
             />
           </div>
           <div className="form-group">
@@ -151,6 +154,9 @@ export function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Digite sua senha"
+                autoComplete="new-password"
+                autoCapitalize="off"
+                autoCorrect="off"
               />
               <button
                 type="button"
@@ -189,6 +195,9 @@ export function Login() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirme sua senha"
+                  autoComplete="new-password"
+                  autoCapitalize="off"
+                  autoCorrect="off"
                 />
                 <button
                   type="button"

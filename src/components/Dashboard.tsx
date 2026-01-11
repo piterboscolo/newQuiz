@@ -30,7 +30,7 @@ export function Dashboard() {
     navigate('/');
   };
 
-  // Logout automático após 10 minutos de inatividade e ao fechar a aplicação
+  // Logout automático após 10 minutos de inatividade
   useEffect(() => {
     if (!user) return;
 
@@ -61,29 +61,10 @@ export function Dashboard() {
 
     resetTimer();
 
-    // Limpar sessão ao fechar a aba/janela
-    const handleBeforeUnload = async () => {
-      if (user) {
-        await logout();
-      }
-    };
-
-    // Limpar sessão quando a página fica oculta (aba inativa)
-    const handleVisibilityChange = async () => {
-      if (document.hidden && user) {
-        await logout();
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       activityEvents.forEach(event => {
         window.removeEventListener(event, resetTimer, true);
       });
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
       }

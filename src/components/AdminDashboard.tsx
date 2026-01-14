@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
 import { useAuth } from '../context/AuthContext';
 import { QuizStatistics, UserRanking, UserQuizStats, User } from '../types';
-import { getAllQuizStatistics, getAllUserQuizStats, getAllUsersWithDetails, getUserRankings } from '../services/adminService';
+import { getAllQuizStatistics, getAllUserQuizStats, getAllUsersWithDetails, getUserRankings, getActiveSessions } from '../services/adminService';
 import './AdminDashboard.css';
 
 const PRESET_AVATARS = [
@@ -23,6 +23,7 @@ export function AdminDashboard() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [usersFilter, setUsersFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [usersWithAvatars, setUsersWithAvatars] = useState<Map<string, { type: 'image' | 'emoji'; value: string; color?: string }>>(new Map());
 
@@ -65,6 +66,12 @@ export function AdminDashboard() {
         const rankingsResult = await getUserRankings();
         if (rankingsResult.success && rankingsResult.rankings) {
           setUserRankings(rankingsResult.rankings);
+        }
+
+        // Carregar sessões ativas
+        const sessionsResult = await getActiveSessions();
+        if (sessionsResult.success && sessionsResult.sessions) {
+          setActiveSessions(sessionsResult.sessions);
         }
 
         // Carregar todos os usuários
@@ -124,13 +131,17 @@ export function AdminDashboard() {
             <div className="stat-content">
               <h3>Usuários Logados</h3>
               <p className="stat-value">
-                {allUsers.filter(u => {
-                  // Usuário atual sempre é considerado logado
-                  if (currentUser && u.id === currentUser.id) return true;
-                  if (!u.lastLogin) return false;
-                  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                  return new Date(u.lastLogin) > twentyFourHoursAgo;
-                }).length}
+                {(() => {
+                  // Criar um Set com IDs de usuários que têm sessões ativas
+                  const activeUserIds = new Set(activeSessions.map(s => s.userId));
+                  
+                  // Se o usuário atual não estiver nas sessões ativas, adicionar
+                  if (currentUser && !activeUserIds.has(currentUser.id)) {
+                    activeUserIds.add(currentUser.id);
+                  }
+                  
+                  return activeUserIds.size;
+                })()}
               </p>
               <p className="stat-label">Nas últimas 24 horas</p>
             </div>

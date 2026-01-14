@@ -216,10 +216,12 @@ CREATE POLICY "Admins can delete questions" ON questions FOR DELETE USING (
 );
 
 -- Políticas para user_sessions
-CREATE POLICY "Users can view their own sessions" ON user_sessions FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Users can insert their own sessions" ON user_sessions FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Users can update their own sessions" ON user_sessions FOR UPDATE USING (user_id = auth.uid());
-CREATE POLICY "Users can delete their own sessions" ON user_sessions FOR DELETE USING (user_id = auth.uid());
+-- NOTA: Como não estamos usando Supabase Auth, as políticas são mais permissivas
+-- A validação de que a sessão pertence ao usuário deve ser feita na aplicação
+CREATE POLICY "Users can view all sessions" ON user_sessions FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own sessions" ON user_sessions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can update their own sessions" ON user_sessions FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Users can delete their own sessions" ON user_sessions FOR DELETE USING (true);
 
 -- Políticas para user_profiles
 -- NOTA: Como não estamos usando Supabase Auth, as políticas são mais permissivas

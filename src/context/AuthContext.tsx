@@ -59,6 +59,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
           setUser(updatedUser);
           localStorage.setItem('user', JSON.stringify(updatedUser));
+          
+          // Atualizar sessão no banco de dados
+          try {
+            const now = new Date().toISOString();
+            
+            // Verificar se já existe uma sessão ativa
+            const { data: existingSession } = await supabase
+              .from('user_sessions')
+              .select('id')
+              .eq('user_id', updatedUser.id)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (existingSession) {
+              // Atualizar sessão existente
+              await supabase
+                .from('user_sessions')
+                .update({
+                  login_time: now,
+                  is_active: true,
+                  logout_time: null,
+                } as never)
+                .eq('id', (existingSession as any).id);
+            } else {
+              // Criar nova sessão
+              await supabase
+                .from('user_sessions')
+                .insert({
+                  user_id: updatedUser.id,
+                  username: updatedUser.username,
+                  login_time: now,
+                  is_active: true,
+                } as never);
+            }
+          } catch (sessionErr) {
+            // Silenciar erro de sessão no carregamento inicial
+            console.log('Nota: Sessão não atualizada no carregamento inicial');
+          }
         }
       } catch (err) {
         console.error('Erro ao carregar usuário:', err);
@@ -142,27 +180,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Salvar sessão no banco de dados
       try {
-        const sessionData: {
-          user_id: string;
-          username: string;
-          login_time: string;
-          is_active: boolean;
-        } = {
-          user_id: foundUser.id,
-          username: foundUser.username,
-          login_time: new Date().toISOString(),
-          is_active: true,
-        };
+        const now = new Date().toISOString();
         
-        const { error: sessionError } = await (supabase
+        // Primeiro, verificar se já existe uma sessão ativa para este usuário
+        const { data: existingSession, error: checkError } = await supabase
           .from('user_sessions')
-          .insert(sessionData as never));
+          .select('id')
+          .eq('user_id', foundUser.id)
+          .eq('is_active', true)
+          .maybeSingle();
 
-        if (sessionError) {
-          console.error('Erro ao salvar sessão:', sessionError);
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.error('❌ Erro ao verificar sessão existente:', checkError);
         }
-      } catch (sessionErr) {
-        console.error('Erro ao criar sessão:', sessionErr);
+
+        if (existingSession) {
+          // Atualizar sessão existente
+          const { error: updateError } = await supabase
+            .from('user_sessions')
+            .update({
+              login_time: now,
+              is_active: true,
+              logout_time: null,
+            } as never)
+            .eq('id', (existingSession as any).id);
+
+          if (updateError) {
+            console.error('❌ Erro ao atualizar sessão:', updateError);
+            console.error('Detalhes:', {
+              code: updateError.code,
+              message: updateError.message,
+              details: updateError.details,
+              hint: updateError.hint
+            });
+          } else {
+            console.log('✅ Sessão atualizada com sucesso');
+          }
+        } else {
+          // Criar nova sessão
+          const sessionData: {
+            user_id: string;
+            username: string;
+            login_time: string;
+            is_active: boolean;
+          } = {
+            user_id: foundUser.id,
+            username: foundUser.username,
+            login_time: now,
+            is_active: true,
+          };
+          
+          const { error: insertError } = await supabase
+            .from('user_sessions')
+            .insert(sessionData as never);
+
+          if (insertError) {
+            console.error('❌ Erro ao criar sessão:', insertError);
+            console.error('Detalhes:', {
+              code: insertError.code,
+              message: insertError.message,
+              details: insertError.details,
+              hint: insertError.hint
+            });
+            
+            // Se for erro de política RLS, informar
+            if (insertError.code === '42501' || insertError.message?.includes('permission') || insertError.message?.includes('policy')) {
+              console.error('🔒 PROBLEMA: Política RLS bloqueando inserção de sessão!');
+              console.error('💡 Solução: Verifique as políticas RLS da tabela user_sessions no Supabase');
+            }
+          } else {
+            console.log('✅ Sessão criada com sucesso');
+          }
+        }
+      } catch (sessionErr: any) {
+        console.error('❌ Erro ao criar/atualizar sessão:', sessionErr);
+        console.error('Stack:', sessionErr.stack);
       }
 
       return true;

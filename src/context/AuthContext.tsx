@@ -1,12 +1,14 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
+import { getUserProfile } from '../services/profileService';
 
 interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<boolean>;
   register: (username: string, password: string, role?: UserRole) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -329,6 +331,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    const currentUser = user;
+    if (!currentUser?.id) return;
+
+    try {
+      // Buscar dados do usuário da tabela users
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao atualizar usuário:', error);
+        return;
+      }
+
+      if (data) {
+        const userData = data as any;
+        
+        // Buscar avatar do perfil (user_profiles) para garantir que temos o mais atualizado
+        let avatarValue = userData.avatar || undefined;
+        try {
+          const profileResult = await getUserProfile(currentUser.id);
+          if (profileResult.success && profileResult.profile) {
+            // Priorizar uploaded_image sobre avatar
+            avatarValue = profileResult.profile.uploaded_image || profileResult.profile.avatar || userData.avatar || undefined;
+          }
+        } catch (profileErr) {
+          console.error('Erro ao buscar perfil para atualizar avatar:', profileErr);
+          // Continuar com o avatar da tabela users se houver erro
+        }
+
+        const updatedUser: User = {
+          id: userData.id,
+          username: userData.username,
+          password: userData.password,
+          role: userData.role as UserRole,
+          avatar: avatarValue,
+        };
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+        console.log('✅ Usuário atualizado no contexto com avatar:', avatarValue ? 'definido' : 'não definido');
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar usuário:', err);
+    }
+  };
+
   const logout = async () => {
     const currentUser = user;
     setUser(null);
@@ -363,6 +414,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        refreshUser,
         isAuthenticated: !!user,
       }}
     >

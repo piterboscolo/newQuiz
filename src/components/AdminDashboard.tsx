@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuiz } from '../context/QuizContext';
 import { useAuth } from '../context/AuthContext';
 import { QuizStatistics, UserRanking, UserQuizStats, User } from '../types';
-import { getAllQuizStatistics, getAllUserQuizStats, getActiveSessions, getAllUsersWithDetails, getUserRankings } from '../services/adminService';
+import { getAllQuizStatistics, getAllUserQuizStats, getAllUsersWithDetails, getUserRankings } from '../services/adminService';
 import './AdminDashboard.css';
 
 const PRESET_AVATARS = [
@@ -20,11 +20,10 @@ export function AdminDashboard() {
   const { subjects } = useQuiz();
   const { user: currentUser } = useAuth();
   const [statistics, setStatistics] = useState<QuizStatistics[]>([]);
-  const [loggedUsers, setLoggedUsers] = useState<any[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [userRankings, setUserRankings] = useState<UserRanking[]>([]);
-  const [activeUsers, setActiveUsers] = useState<any[]>([]);
-  const [inactiveUsers, setInactiveUsers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [usersFilter, setUsersFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [usersWithAvatars, setUsersWithAvatars] = useState<Map<string, { type: 'image' | 'emoji'; value: string; color?: string }>>(new Map());
 
   // Função auxiliar para obter avatar
@@ -61,22 +60,6 @@ export function AdminDashboard() {
           setStatistics(statsResult.statistics);
         }
 
-        // Carregar sessões ativas
-        const sessionsResult = await getActiveSessions();
-        if (sessionsResult.success && sessionsResult.sessions) {
-          // Garantir que o usuário atual apareça como online
-          if (currentUser) {
-            const currentUserSession = sessionsResult.sessions.find((s) => s.userId === currentUser.id);
-            if (!currentUserSession) {
-              sessionsResult.sessions.push({
-                userId: currentUser.id,
-                username: currentUser.username,
-                loginTime: new Date().toISOString(),
-              });
-            }
-          }
-          setLoggedUsers(sessionsResult.sessions);
-        }
 
         // Carregar ranking
         const rankingsResult = await getUserRankings();
@@ -87,21 +70,8 @@ export function AdminDashboard() {
         // Carregar todos os usuários
         const usersResult = await getAllUsersWithDetails();
         if (usersResult.success && usersResult.users) {
-          // Separar usuários em ativos e inativos (últimos 7 dias)
-          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          
-          const active = usersResult.users.filter((u) => {
-            if (!u.lastLogin) return false;
-            return new Date(u.lastLogin) > sevenDaysAgo;
-          });
-          
-          const inactive = usersResult.users.filter((u) => {
-            if (!u.lastLogin) return true;
-            return new Date(u.lastLogin) <= sevenDaysAgo;
-          });
-          
-          setActiveUsers(active);
-          setInactiveUsers(inactive);
+          // Armazenar todos os usuários
+          setAllUsers(usersResult.users);
           
           // Criar mapa de avatares
           const avatarMap = new Map<string, { type: 'image' | 'emoji'; value: string; color?: string }>();
@@ -153,7 +123,15 @@ export function AdminDashboard() {
             </div>
             <div className="stat-content">
               <h3>Usuários Logados</h3>
-              <p className="stat-value">{loggedUsers.length}</p>
+              <p className="stat-value">
+                {allUsers.filter(u => {
+                  // Usuário atual sempre é considerado logado
+                  if (currentUser && u.id === currentUser.id) return true;
+                  if (!u.lastLogin) return false;
+                  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                  return new Date(u.lastLogin) > twentyFourHoursAgo;
+                }).length}
+              </p>
               <p className="stat-label">Nas últimas 24 horas</p>
             </div>
           </div>
@@ -177,171 +155,149 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        {loggedUsers.length > 0 && (
-          <div className="stats-section">
-            <h3>Usuários Ativos</h3>
-            <div className="users-list">
-              {loggedUsers.map((user, index) => {
-                const loginDate = new Date(user.loginTime);
-                const timeAgo = Math.floor((Date.now() - loginDate.getTime()) / 1000 / 60); // minutos
-                const timeAgoText = timeAgo < 60 
-                  ? `${timeAgo} min atrás`
-                  : timeAgo < 1440
-                  ? `${Math.floor(timeAgo / 60)} h atrás`
-                  : `${Math.floor(timeAgo / 1440)} dias atrás`;
+        {/* Usuários do Sistema */}
+        <div className="stats-section">
+          <div className="section-header-with-filter">
+            <div>
+              <h3>👥 Usuários do Sistema</h3>
+              <p className="section-description">Gerencie todos os usuários do sistema com controle de status ativo/inativo</p>
+            </div>
+            <div className="users-filter-buttons">
+              <button
+                className={`filter-button ${usersFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setUsersFilter('all')}
+              >
+                Todos ({allUsers.length})
+              </button>
+              <button
+                className={`filter-button ${usersFilter === 'active' ? 'active' : ''}`}
+                onClick={() => setUsersFilter('active')}
+              >
+                Ativos ({allUsers.filter(u => {
+                  // Usuário atual sempre é considerado ativo
+                  if (currentUser && u.id === currentUser.id) return true;
+                  if (!u.lastLogin) return false;
+                  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                  return new Date(u.lastLogin) > sevenDaysAgo;
+                }).length})
+              </button>
+              <button
+                className={`filter-button ${usersFilter === 'inactive' ? 'active' : ''}`}
+                onClick={() => setUsersFilter('inactive')}
+              >
+                Inativos ({allUsers.filter(u => {
+                  // Usuário atual nunca é considerado inativo
+                  if (currentUser && u.id === currentUser.id) return false;
+                  if (!u.lastLogin) return true;
+                  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                  return new Date(u.lastLogin) <= sevenDaysAgo;
+                }).length})
+              </button>
+            </div>
+          </div>
+          
+          <div className="users-unified-list">
+            {(() => {
+              const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+              
+              const filteredUsers = allUsers
+                .filter((u) => {
+                  if (usersFilter === 'all') return true;
+                  if (usersFilter === 'active') {
+                    // Usuário atual sempre é considerado ativo
+                    if (currentUser && u.id === currentUser.id) return true;
+                    if (!u.lastLogin) return false;
+                    return new Date(u.lastLogin) > sevenDaysAgo;
+                  }
+                  if (usersFilter === 'inactive') {
+                    // Usuário atual nunca é considerado inativo
+                    if (currentUser && u.id === currentUser.id) return false;
+                    if (!u.lastLogin) return true;
+                    return new Date(u.lastLogin) <= sevenDaysAgo;
+                  }
+                  return true;
+                })
+                .sort((a, b) => {
+                  // Ordenar alfabeticamente por username
+                  return a.username.localeCompare(b.username, 'pt-BR', { sensitivity: 'base' });
+                });
+
+              const formatLastLogin = (loginTime: string | null) => {
+                if (!loginTime) return '';
+                const date = new Date(loginTime);
+                const now = new Date();
+                const diffMs = now.getTime() - date.getTime();
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
                 
-                const avatar = usersWithAvatars.get(user.userId) || getUserAvatar(user.userId, undefined);
-                
-                // Verificar se está online (últimos 5 minutos) ou se é o usuário atual
-                const isOnline = timeAgo < 5 || (currentUser && user.userId === currentUser.id);
+                if (diffMins < 60) return `${diffMins} min atrás`;
+                if (diffHours < 24) return `${diffHours}h atrás`;
+                if (diffDays < 7) return `${diffDays} dias atrás`;
+                return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              };
+
+              const isUserActive = (user: any) => {
+                // Usuário atual sempre é considerado ativo
+                if (currentUser && user.id === currentUser.id) return true;
+                if (!user.lastLogin) return false;
+                return new Date(user.lastLogin) > sevenDaysAgo;
+              };
+
+              if (filteredUsers.length === 0) {
+                return (
+                  <div className="users-empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15C10.9391 15 9.92172 15.4214 9.17157 16.1716C8.42143 16.9217 8 17.9391 8 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p>Nenhum usuário encontrado com este filtro.</p>
+                  </div>
+                );
+              }
+
+              return filteredUsers.map((user) => {
+                const avatar = usersWithAvatars.get(user.id) || getUserAvatar(user.id, user.avatar);
+                const active = isUserActive(user);
                 
                 return (
-                  <div 
-                    key={user.userId || index} 
-                    className="user-card-compact"
-                    title={`${user.username} - ${isOnline ? 'Online' : 'Offline'} (${timeAgoText})`}
-                  >
-                    <div className="user-avatar-compact" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
+                  <div key={user.id} className={`user-status-item-unified ${active ? 'user-active' : 'user-inactive'}`}>
+                    <div className="user-status-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
                       {avatar.type === 'image' ? (
-                        <img src={avatar.value} alt={user.username} className="user-avatar-image-compact" />
+                        <img src={avatar.value} alt={user.username} />
                       ) : (
-                        <span className="user-avatar-emoji-compact">{avatar.value}</span>
+                        <span>{avatar.value}</span>
                       )}
                     </div>
-                    <div className="user-info-compact">
-                      <span className="user-name-compact">{user.username}</span>
-                      <span className="user-time-compact">{timeAgoText}</span>
-                    </div>
-                    <div className={`user-status-compact ${isOnline ? 'online' : 'offline'}`}>
-                      {isOnline ? (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <circle cx="12" cy="12" r="10" fill="#10b981" stroke="white" strokeWidth="2"/>
-                        </svg>
-                      ) : (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <circle cx="12" cy="12" r="10" fill="#94a3b8" stroke="white" strokeWidth="2"/>
-                        </svg>
-                      )}
-                    </div>
-                    <div className="user-tooltip">
-                      <div className="tooltip-content">
-                        <div className="tooltip-header">
-                          <div className="tooltip-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
-                            {avatar.type === 'image' ? (
-                              <img src={avatar.value} alt={user.username} />
-                            ) : (
-                              <span>{avatar.value}</span>
-                            )}
-                          </div>
-                          <div className="tooltip-info">
-                            <div className="tooltip-name">{user.username}</div>
-                            <div className={`tooltip-status ${isOnline ? 'online' : 'offline'}`}>
-                              {isOnline ? '● Online' : '○ Offline'}
-                            </div>
-                          </div>
+                    <div className="user-status-info">
+                      <div className="user-status-header-row">
+                        <div className="user-status-name">{user.username}</div>
+                        <div className={`user-status-badge ${active ? 'status-active' : 'status-inactive'}`}>
+                          {active ? (
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <circle cx="12" cy="12" r="10" fill="#10b981" stroke="white" strokeWidth="2"/>
+                            </svg>
+                          ) : (
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <circle cx="12" cy="12" r="10" fill="#94a3b8" stroke="white" strokeWidth="2"/>
+                            </svg>
+                          )}
                         </div>
-                        <div className="tooltip-time">Último acesso: {timeAgoText}</div>
+                      </div>
+                      <div className="user-status-meta">
+                        <span className="user-status-role">{user.role === 'admin' ? 'Admin' : 'Aluno'}</span>
+                        {formatLastLogin(user.lastLogin) && (
+                          <>
+                            <span className="user-status-separator">•</span>
+                            <span className="user-status-date">{formatLastLogin(user.lastLogin)}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Usuários Criados - Ativos e Inativos */}
-        <div className="stats-section">
-          <h3>👥 Usuários do Sistema</h3>
-          <p className="section-description">Usuários criados, ativos e inativos com data do último login</p>
-          
-          <div className="users-status-grid">
-            <div className="users-status-card users-active">
-              <div className="users-status-header">
-                <h4>✅ Usuários Ativos</h4>
-                <span className="users-count">{activeUsers.length}</span>
-              </div>
-              <p className="users-status-description">Login nos últimos 7 dias</p>
-              <div className="users-status-list">
-                {activeUsers.length === 0 ? (
-                  <p className="users-empty">Nenhum usuário ativo</p>
-                ) : (
-                  activeUsers.map((user) => {
-                    const avatar = usersWithAvatars.get(user.id) || getUserAvatar(user.id, user.avatar);
-                    const formatLastLogin = (loginTime: string | null) => {
-                      if (!loginTime) return 'Nunca';
-                      const date = new Date(loginTime);
-                      const now = new Date();
-                      const diffMs = now.getTime() - date.getTime();
-                      const diffMins = Math.floor(diffMs / 60000);
-                      const diffHours = Math.floor(diffMs / 3600000);
-                      const diffDays = Math.floor(diffMs / 86400000);
-                      
-                      if (diffMins < 60) return `${diffMins} min atrás`;
-                      if (diffHours < 24) return `${diffHours}h atrás`;
-                      if (diffDays < 7) return `${diffDays} dias atrás`;
-                      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                    };
-                    
-                    return (
-                      <div key={user.id} className="user-status-item">
-                        <div className="user-status-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
-                          {avatar.type === 'image' ? (
-                            <img src={avatar.value} alt={user.username} />
-                          ) : (
-                            <span>{avatar.value}</span>
-                          )}
-                        </div>
-                        <div className="user-status-info">
-                          <div className="user-status-name">{user.username}</div>
-                          <div className="user-status-role">{user.role === 'admin' ? '👨‍💼 Admin' : '🎓 Aluno'}</div>
-                          <div className="user-status-date">Último login: {formatLastLogin(user.lastLogin)}</div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-            
-            <div className="users-status-card users-inactive">
-              <div className="users-status-header">
-                <h4>⏸️ Usuários Inativos</h4>
-                <span className="users-count">{inactiveUsers.length}</span>
-              </div>
-              <p className="users-status-description">Sem login nos últimos 7 dias</p>
-              <div className="users-status-list">
-                {inactiveUsers.length === 0 ? (
-                  <p className="users-empty">Nenhum usuário inativo</p>
-                ) : (
-                  inactiveUsers.map((user) => {
-                    const avatar = usersWithAvatars.get(user.id) || getUserAvatar(user.id, user.avatar);
-                    const formatLastLogin = (loginTime: string | null) => {
-                      if (!loginTime) return 'Nunca';
-                      const date = new Date(loginTime);
-                      return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                    };
-                    
-                    return (
-                      <div key={user.id} className="user-status-item">
-                        <div className="user-status-avatar" style={avatar.type === 'emoji' ? { backgroundColor: avatar.color } : {}}>
-                          {avatar.type === 'image' ? (
-                            <img src={avatar.value} alt={user.username} />
-                          ) : (
-                            <span>{avatar.value}</span>
-                          )}
-                        </div>
-                        <div className="user-status-info">
-                          <div className="user-status-name">{user.username}</div>
-                          <div className="user-status-role">{user.role === 'admin' ? '👨‍💼 Admin' : '🎓 Aluno'}</div>
-                          <div className="user-status-date">Último login: {formatLastLogin(user.lastLogin)}</div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+              });
+            })()}
           </div>
         </div>
 

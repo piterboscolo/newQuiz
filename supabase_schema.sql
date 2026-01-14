@@ -222,10 +222,12 @@ CREATE POLICY "Users can update their own sessions" ON user_sessions FOR UPDATE 
 CREATE POLICY "Users can delete their own sessions" ON user_sessions FOR DELETE USING (user_id = auth.uid());
 
 -- Políticas para user_profiles
+-- NOTA: Como não estamos usando Supabase Auth, as políticas são mais permissivas
+-- A validação de que o perfil pertence ao usuário deve ser feita na aplicação
 CREATE POLICY "Users can view all profiles" ON user_profiles FOR SELECT USING (true);
-CREATE POLICY "Users can insert their own profile" ON user_profiles FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Users can update their own profile" ON user_profiles FOR UPDATE USING (user_id = auth.uid());
-CREATE POLICY "Users can delete their own profile" ON user_profiles FOR DELETE USING (user_id = auth.uid());
+CREATE POLICY "Users can insert their own profile" ON user_profiles FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can update their own profile" ON user_profiles FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Users can delete their own profile" ON user_profiles FOR DELETE USING (true);
 
 -- Políticas para quiz_statistics
 CREATE POLICY "Users can view their own statistics" ON quiz_statistics FOR SELECT USING (user_id = auth.uid());

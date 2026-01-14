@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlunoDashboard } from './AlunoDashboard';
 import { AdminDashboard } from './AdminDashboard';
 import { Profile } from './Profile';
+import { getUserProfile } from '../services/profileService';
 import './Dashboard.css';
 
 const PRESET_AVATARS = [
@@ -22,6 +23,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
   const [isQuizActive, setIsQuizActive] = useState(false);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
 
@@ -29,6 +31,38 @@ export function Dashboard() {
     await logout();
     navigate('/');
   };
+
+  // Carregar avatar do perfil do usuário
+  useEffect(() => {
+    const loadUserAvatar = async () => {
+      if (!user) {
+        setUserAvatar(null);
+        return;
+      }
+
+      // Primeiro tentar usar o avatar do contexto
+      if (user.avatar) {
+        setUserAvatar(user.avatar);
+        return;
+      }
+
+      // Se não tiver avatar no contexto, buscar do user_profiles
+      try {
+        const result = await getUserProfile(user.id);
+        if (result.success && result.profile) {
+          const avatar = result.profile.uploaded_image || result.profile.avatar || null;
+          setUserAvatar(avatar);
+        } else {
+          setUserAvatar(null);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar avatar:', err);
+        setUserAvatar(null);
+      }
+    };
+
+    loadUserAvatar();
+  }, [user]);
 
   // Logout automático após 10 minutos de inatividade
   useEffect(() => {
@@ -76,15 +110,17 @@ export function Dashboard() {
   }
 
   const getUserAvatar = () => {
-    // Usar avatar do usuário do banco (já atualizado pelo profileService)
-    if (user.avatar) {
+    // Priorizar avatar carregado do perfil, depois do contexto
+    const avatarValue = userAvatar || user?.avatar;
+    
+    if (avatarValue) {
       // Se for uma imagem (data:image), retornar diretamente
-      if (user.avatar.startsWith('data:image')) {
-        return user.avatar;
+      if (avatarValue.startsWith('data:image')) {
+        return avatarValue;
       }
       // Se for um ID de avatar preset, buscar o emoji
-      const avatar = PRESET_AVATARS.find(a => a.id === user.avatar);
-      return avatar ? avatar.emoji : user.avatar;
+      const avatar = PRESET_AVATARS.find(a => a.id === avatarValue);
+      return avatar ? avatar.emoji : avatarValue;
     }
     return '👤';
   };
@@ -116,7 +152,20 @@ export function Dashboard() {
       </header>
       <main className="dashboard-main">
         {showProfile ? (
-          <Profile onBack={() => setShowProfile(false)} />
+          <Profile 
+            onBack={() => {
+              setShowProfile(false);
+              // Recarregar avatar quando fechar o perfil
+              if (user) {
+                getUserProfile(user.id).then(result => {
+                  if (result.success && result.profile) {
+                    const avatar = result.profile.uploaded_image || result.profile.avatar || null;
+                    setUserAvatar(avatar);
+                  }
+                });
+              }
+            }} 
+          />
         ) : (
           user.role === 'admin' ? (
             <AdminDashboard />

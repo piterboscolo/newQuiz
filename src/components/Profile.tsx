@@ -19,7 +19,7 @@ interface ProfileProps {
 }
 
 export function Profile({ onBack }: ProfileProps) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [selectedAvatar, setSelectedAvatar] = useState<string>('');
   const [uploadedImage, setUploadedImage] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'preset' | 'upload'>('preset');
@@ -111,9 +111,24 @@ export function Profile({ onBack }: ProfileProps) {
       );
 
       if (result.success) {
-        setSelectedAvatar(tempSelectedAvatar);
-        setUploadedImage(tempUploadedImage);
+        // Recarregar perfil do banco para garantir que está sincronizado
+        const profileResult = await getUserProfile(user.id);
+        if (profileResult.success && profileResult.profile) {
+          setSelectedAvatar(profileResult.profile.avatar || '');
+          setUploadedImage(profileResult.profile.uploaded_image || '');
+          setTempSelectedAvatar(profileResult.profile.avatar || '');
+          setTempUploadedImage(profileResult.profile.uploaded_image || '');
+        } else {
+          // Fallback: usar os valores temporários se não conseguir recarregar
+          setSelectedAvatar(tempSelectedAvatar);
+          setUploadedImage(tempUploadedImage);
+        }
+        
         setHasChanges(false);
+        
+        // Atualizar o usuário no contexto para refletir o novo avatar
+        await refreshUser();
+        
         if (onBack) {
           onBack();
         }

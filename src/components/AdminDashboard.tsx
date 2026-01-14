@@ -187,6 +187,9 @@ export function AdminDashboard() {
                 Ativos ({allUsers.filter(u => {
                   // Usuário atual sempre é considerado ativo
                   if (currentUser && u.id === currentUser.id) return true;
+                  // Usar isActive se disponível
+                  if (u.isActive !== undefined) return u.isActive === true;
+                  // Fallback: usar lastLogin
                   if (!u.lastLogin) return false;
                   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
                   return new Date(u.lastLogin) > sevenDaysAgo;
@@ -199,6 +202,9 @@ export function AdminDashboard() {
                 Inativos ({allUsers.filter(u => {
                   // Usuário atual nunca é considerado inativo
                   if (currentUser && u.id === currentUser.id) return false;
+                  // Usar isActive se disponível
+                  if (u.isActive !== undefined) return u.isActive === false;
+                  // Fallback: usar lastLogin
                   if (!u.lastLogin) return true;
                   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
                   return new Date(u.lastLogin) <= sevenDaysAgo;
@@ -217,12 +223,18 @@ export function AdminDashboard() {
                   if (usersFilter === 'active') {
                     // Usuário atual sempre é considerado ativo
                     if (currentUser && u.id === currentUser.id) return true;
+                    // Usar isActive se disponível (mais preciso)
+                    if (u.isActive !== undefined) return u.isActive === true;
+                    // Fallback: usar lastLogin
                     if (!u.lastLogin) return false;
                     return new Date(u.lastLogin) > sevenDaysAgo;
                   }
                   if (usersFilter === 'inactive') {
                     // Usuário atual nunca é considerado inativo
                     if (currentUser && u.id === currentUser.id) return false;
+                    // Usar isActive se disponível (mais preciso)
+                    if (u.isActive !== undefined) return u.isActive === false;
+                    // Fallback: usar lastLogin
                     if (!u.lastLogin) return true;
                     return new Date(u.lastLogin) <= sevenDaysAgo;
                   }
@@ -251,6 +263,13 @@ export function AdminDashboard() {
               const isUserActive = (user: any) => {
                 // Usuário atual sempre é considerado ativo
                 if (currentUser && user.id === currentUser.id) return true;
+                
+                // Usar o campo isActive da sessão (mais preciso)
+                if (user.isActive !== undefined) {
+                  return user.isActive === true;
+                }
+                
+                // Fallback: usar lastLogin se isActive não estiver disponível
                 if (!user.lastLogin) return false;
                 return new Date(user.lastLogin) > sevenDaysAgo;
               };

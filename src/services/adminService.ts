@@ -157,15 +157,33 @@ export async function getAllUsersWithDetails(): Promise<{
       return { success: false, error: sessionsError.message };
     }
 
-    // Criar mapa de últimas sessões
+    // Criar mapa de sessões - priorizar sessões ativas
     const lastLoginMap = new Map<string, { loginTime: string; isActive: boolean }>();
     (sessions || []).forEach((s: any) => {
       const existing = lastLoginMap.get(s.user_id);
-      if (!existing || new Date(s.login_time) > new Date(existing.loginTime)) {
+      const isActive = s.is_active || false;
+      
+      // Priorizar sessões ativas, ou a mais recente se não houver ativa
+      if (!existing) {
         lastLoginMap.set(s.user_id, {
           loginTime: s.login_time,
-          isActive: s.is_active || false,
+          isActive: isActive,
         });
+      } else {
+        // Se a sessão atual está ativa e a existente não, usar a atual
+        if (isActive && !existing.isActive) {
+          lastLoginMap.set(s.user_id, {
+            loginTime: s.login_time,
+            isActive: isActive,
+          });
+        }
+        // Se ambas estão ativas ou ambas inativas, usar a mais recente
+        else if (isActive === existing.isActive && new Date(s.login_time) > new Date(existing.loginTime)) {
+          lastLoginMap.set(s.user_id, {
+            loginTime: s.login_time,
+            isActive: isActive,
+          });
+        }
       }
     });
 

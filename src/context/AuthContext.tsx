@@ -474,29 +474,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     const currentUser = user;
-    setUser(null);
-    localStorage.removeItem('user');
-
-    // Atualizar sessão no banco de dados
+    
+    // Atualizar sessão no banco de dados ANTES de limpar o estado
     if (currentUser) {
       try {
+        const now = new Date().toISOString();
         const updateData: {
           is_active: boolean;
           logout_time: string;
         } = {
           is_active: false,
-          logout_time: new Date().toISOString(),
+          logout_time: now,
         };
         
-        await (supabase
+        console.log('🚪 Fazendo logout do usuário:', currentUser.username);
+        
+        // Desativar TODAS as sessões ativas do usuário (pode haver múltiplas)
+        const { data, error } = await supabase
           .from('user_sessions')
           .update(updateData as never)
           .eq('user_id', currentUser.id)
-          .eq('is_active', true));
-      } catch (err) {
-        console.error('Erro ao atualizar sessão:', err);
+          .eq('is_active', true)
+          .select();
+
+        if (error) {
+          console.error('❌ Erro ao atualizar sessão no logout:', error);
+          console.error('Detalhes:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          
+          // Se for erro de política RLS, informar
+          if (error.code === '42501' || error.message?.includes('permission') || error.message?.includes('policy')) {
+            console.error('🔒 PROBLEMA: Política RLS bloqueando atualização de sessão!');
+            console.error('💡 Solução: Execute supabase_fix_user_sessions_rls.sql no Supabase');
+          }
+        } else {
+          const updatedCount = data?.length || 0;
+          if (updatedCount > 0) {
+            console.log(`✅ ${updatedCount} sessão(ões) desativada(s) com sucesso`);
+          } else {
+            console.log('⚠️ Nenhuma sessão ativa encontrada para desativar');
+          }
+        }
+      } catch (err: any) {
+        console.error('❌ Erro ao atualizar sessão no logout:', err);
+        console.error('Stack:', err.stack);
       }
     }
+
+    // Limpar estado do usuário após atualizar a sessão
+    setUser(null);
+    localStorage.removeItem('user');
   };
 
   return (

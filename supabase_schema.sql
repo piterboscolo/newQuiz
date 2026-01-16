@@ -232,17 +232,18 @@ CREATE POLICY "Users can update their own profile" ON user_profiles FOR UPDATE U
 CREATE POLICY "Users can delete their own profile" ON user_profiles FOR DELETE USING (true);
 
 -- Políticas para quiz_statistics
-CREATE POLICY "Users can view their own statistics" ON quiz_statistics FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Users can insert their own statistics" ON quiz_statistics FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Users can update their own statistics" ON quiz_statistics FOR UPDATE USING (user_id = auth.uid());
-CREATE POLICY "Admins can view all statistics" ON quiz_statistics FOR SELECT USING (
-  EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
-);
+-- NOTA: Como não estamos usando Supabase Auth, as políticas são mais permissivas
+-- A validação de que a estatística pertence ao usuário deve ser feita na aplicação
+CREATE POLICY "Users can view all statistics" ON quiz_statistics FOR SELECT USING (true);
+CREATE POLICY "Users can insert their own statistics" ON quiz_statistics FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can update their own statistics" ON quiz_statistics FOR UPDATE USING (true) WITH CHECK (true);
 
 -- Políticas para user_quiz_stats
+-- NOTA: Como não estamos usando Supabase Auth, as políticas são mais permissivas
+-- A validação de que a estatística pertence ao usuário deve ser feita na aplicação
 CREATE POLICY "Users can view all stats" ON user_quiz_stats FOR SELECT USING (true);
-CREATE POLICY "Users can insert their own stats" ON user_quiz_stats FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Users can update their own stats" ON user_quiz_stats FOR UPDATE USING (user_id = auth.uid());
+CREATE POLICY "Users can insert their own stats" ON user_quiz_stats FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can update their own stats" ON user_quiz_stats FOR UPDATE USING (true) WITH CHECK (true);
 
 -- Políticas para answered_questions
 CREATE POLICY "Users can view their own answered questions" ON answered_questions FOR SELECT USING (user_id = auth.uid());

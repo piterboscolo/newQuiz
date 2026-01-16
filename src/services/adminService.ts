@@ -43,6 +43,90 @@ export async function getAllQuizStatistics(): Promise<{
 }
 
 /**
+ * Busca estatísticas agregadas por matéria (total de tentativas por matéria)
+ */
+export async function getQuizStatisticsBySubject(): Promise<{
+  success: boolean;
+  statistics?: Array<{
+    subjectId: string;
+    subjectName: string;
+    totalAttempts: number;
+    totalCorrect: number;
+    totalWrong: number;
+    uniqueUsers: number;
+  }>;
+  error?: string;
+}> {
+  try {
+    const { data, error } = await supabase
+      .from('quiz_statistics')
+      .select('subject_id, total_attempts, correct_answers, wrong_answers, user_id');
+
+    if (error) {
+      console.error('❌ Erro ao buscar estatísticas por matéria:', error);
+      return { success: false, error: error.message };
+    }
+
+    // Agregar por matéria
+    const aggregated = new Map<string, {
+      totalAttempts: number;
+      totalCorrect: number;
+      totalWrong: number;
+      uniqueUsers: Set<string>;
+    }>();
+
+    (data || []).forEach((s: any) => {
+      const subjectId = s.subject_id;
+      const existing = aggregated.get(subjectId);
+      
+      if (existing) {
+        existing.totalAttempts += s.total_attempts || 0;
+        existing.totalCorrect += s.correct_answers || 0;
+        existing.totalWrong += s.wrong_answers || 0;
+        existing.uniqueUsers.add(s.user_id);
+      } else {
+        aggregated.set(subjectId, {
+          totalAttempts: s.total_attempts || 0,
+          totalCorrect: s.correct_answers || 0,
+          totalWrong: s.wrong_answers || 0,
+          uniqueUsers: new Set([s.user_id]),
+        });
+      }
+    });
+
+    // Buscar nomes das matérias
+    const { data: subjectsData, error: subjectsError } = await supabase
+      .from('subjects')
+      .select('id, name');
+
+    const subjectsMap = new Map<string, string>();
+    if (subjectsData) {
+      subjectsData.forEach((s: any) => {
+        subjectsMap.set(s.id, s.name);
+      });
+    }
+
+    // Converter para array e adicionar nomes
+    const statistics = Array.from(aggregated.entries()).map(([subjectId, data]) => ({
+      subjectId,
+      subjectName: subjectsMap.get(subjectId) || 'Desconhecida',
+      totalAttempts: data.totalAttempts,
+      totalCorrect: data.totalCorrect,
+      totalWrong: data.totalWrong,
+      uniqueUsers: data.uniqueUsers.size,
+    }));
+
+    // Ordenar por total de tentativas (mais jogadas primeiro)
+    statistics.sort((a, b) => b.totalAttempts - a.totalAttempts);
+
+    return { success: true, statistics };
+  } catch (err: any) {
+    console.error('❌ Erro ao buscar estatísticas por matéria:', err);
+    return { success: false, error: err.message || 'Erro desconhecido' };
+  }
+}
+
+/**
  * Busca todas as estatísticas de usuários
  */
 export async function getAllUserQuizStats(): Promise<{
@@ -208,7 +292,7 @@ export async function getAllUsersWithDetails(): Promise<{
 }
 
 /**
- * Calcula ranking de usuários
+ * Calcula ranking de usuários com pontuações e matérias que mais pontuam
  */
 export async function getUserRankings(): Promise<{
   success: boolean;
@@ -216,7 +300,7 @@ export async function getUserRankings(): Promise<{
   error?: string;
 }> {
   try {
-    // Buscar estatísticas de usuários
+    // Buscar estatísticas gerais de usuários
     const statsResult = await getAllUserQuizStats();
     if (!statsResult.success || !statsResult.stats) {
       return { success: false, error: statsResult.error };
@@ -237,12 +321,71 @@ export async function getUserRankings(): Promise<{
       userMap.set(u.id, u.avatar);
     });
 
-    // Calcular ranking
+    // Buscar estatísticas por matéria (quiz_statistics) para calcular pontuações
+    const { data: quizStats, error: quizStatsError } = await supabase
+      .from('quiz_statistics')
+      .select('user_id, subject_id, correct_answers');
+
+    if (quizStatsError) {
+      console.error('❌ Erro ao buscar estatísticas de quiz:', quizStatsError);
+      return { success: false, error: quizStatsError.message };
+    }
+
+    // Buscar nomes das matérias
+    const { data: subjects, error: subjectsError } = await supabase
+      .from('subjects')
+      .select('id, name');
+
+    if (subjectsError) {
+      console.error('❌ Erro ao buscar matérias:', subjectsError);
+      return { success: false, error: subjectsError.message };
+    }
+
+    const subjectsMap = new Map<string, string>();
+    (subjects || []).forEach((s: any) => {
+      subjectsMap.set(s.id, s.name);
+    });
+
+    // Agrupar estatísticas por usuário e matéria
+    const userSubjectStats = new Map<string, Map<string, number>>();
+    (quizStats || []).forEach((stat: any) => {
+      const userId = stat.user_id;
+      const subjectId = stat.subject_id;
+      const correctAnswers = stat.correct_answers || 0;
+
+      if (!userSubjectStats.has(userId)) {
+        userSubjectStats.set(userId, new Map());
+      }
+      const userStats = userSubjectStats.get(userId)!;
+      userStats.set(subjectId, (userStats.get(subjectId) || 0) + correctAnswers);
+    });
+
+    // Calcular ranking com pontuações
     const rankings: UserRanking[] = statsResult.stats
       .map((stat) => {
         const accuracy = stat.totalQuestions > 0
           ? Math.round((stat.totalFirstAttemptCorrect / stat.totalQuestions) * 100)
           : 0;
+
+        // Calcular pontuação total (soma de todos os acertos por matéria)
+        const userStats = userSubjectStats.get(stat.userId) || new Map();
+        let totalScore = 0;
+        const subjectScores: Array<{ subjectId: string; subjectName: string; score: number; correctAnswers: number }> = [];
+
+        userStats.forEach((score, subjectId) => {
+          totalScore += score;
+          const subjectName = subjectsMap.get(subjectId) || 'Desconhecida';
+          subjectScores.push({
+            subjectId,
+            subjectName,
+            score,
+            correctAnswers: score, // score já é o número de acertos
+          });
+        });
+
+        // Ordenar matérias por pontuação (maior primeiro) e pegar top 3
+        subjectScores.sort((a, b) => b.score - a.score);
+        const topSubjects = subjectScores.slice(0, 3);
 
         return {
           position: 0, // Será calculado após ordenação
@@ -251,11 +394,16 @@ export async function getUserRankings(): Promise<{
           totalQuizzes: stat.totalQuizzes,
           totalFirstAttemptCorrect: stat.totalFirstAttemptCorrect,
           accuracy: accuracy,
+          totalScore: totalScore, // Pontuação total baseada em acertos
           avatar: userMap.get(stat.userId) || undefined,
+          topSubjects: topSubjects.length > 0 ? topSubjects : undefined,
         };
       })
       .sort((a, b) => {
-        // Ordenar por: 1) Total de quizzes, 2) Acertos de primeira, 3) Precisão
+        // Ordenar por: 1) Pontuação total, 2) Total de quizzes, 3) Acertos de primeira, 4) Precisão
+        if (b.totalScore !== a.totalScore) {
+          return b.totalScore - a.totalScore;
+        }
         if (b.totalQuizzes !== a.totalQuizzes) {
           return b.totalQuizzes - a.totalQuizzes;
         }

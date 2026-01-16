@@ -59,5 +59,12 @@ export interface UserRanking {
   totalQuizzes: number;
   totalFirstAttemptCorrect: number;
   accuracy: number; // Porcentagem de acertos de primeira
+  totalScore: number; // Pontuação total (baseada em acertos)
   avatar?: string;
+  topSubjects?: Array<{
+    subjectId: string;
+    subjectName: string;
+    score: number; // Pontuação nesta matéria (acertos)
+    correctAnswers: number;
+  }>;
 }
